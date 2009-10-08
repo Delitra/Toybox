@@ -1,0 +1,148 @@
+# SK's Paint
+# Copyright (c) 2009 sk89q <http://sk89q.therisenrealm.com>
+# 
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+# 
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+# 
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+# 
+# $Id$
+
+@name Paint 2.0 [sk89q]
+@inputs HasArtist Seat:entity Draw Clear Erase CursorX CursorY BigBrush Screen:wirelink Screen2:wirelink RGB:vector
+@outputs RGBAtCursor:vector
+@persist LastX LastY Continuous CanDraw
+@trigger 
+
+if (~HasArtist) {
+    if (HasArtist) {
+        Seat:hintDriver("Select the color with the left tablet and draw with the right tablet.", 8)
+        Seat:hintDriver("Right click to erase, hold SHIFT to use a large brush, and press ALT for the color picker.", 8)
+        CanDraw = 0
+        timer("candraw", 300)
+    } else {
+        stoptimer("candraw")
+    }
+} elseif (clk("candraw")) {
+    CanDraw = 1
+} elseif (clk("clear2")) {
+    for (I = 0, 40*40) {
+        Screen2[I] = 0
+    }
+} elseif (~Clear & Clear) {
+    for (I = 0, 40*40) {
+        Screen[I] = 0
+    }
+    timer("clear2", 100)
+} elseif (~Draw & !Draw) {
+    Continuous = 0
+} elseif ((Draw | Erase) & CanDraw) {
+    Screen[1048569] = 2
+    Screen2[1048569] = 2
+    
+    X = floor(CursorX * 40)
+    Y = floor(CursorY * 40)
+    
+    if (Erase) {
+        UseRGB = vec(0, 0, 0)
+    } else {
+        UseRGB = RGB
+    }
+    
+    if (!Continuous) {
+        if (BigBrush) {
+            for (RX = X - 1, X + 1) {
+                for (RY = Y - 1, Y + 1) {
+                    I = RY * 40 + RX
+                    Screen[I] = UseRGB:x()*65536 + UseRGB:y()*256 + UseRGB:z()
+                    Screen2[I] = UseRGB:x()*65536 + UseRGB:y()*256 + UseRGB:z()
+                }
+            }
+        } else {
+            I = Y * 40 + X
+            Screen[I] = UseRGB:x()*65536 + UseRGB:y()*256 + UseRGB:z()
+            Screen2[I] = UseRGB:x()*65536 + UseRGB:y()*256 + UseRGB:z()
+        }
+    } elseif (Y != LastY | X != LastX) {
+        X0 = LastX
+        Y0 = LastY
+        X1 = X
+        Y1 = Y
+        Steep = abs(Y1 - Y0) > abs(X1 - X0)
+        if (Steep) {
+            Temp = Y0
+            Y0 = X0
+            X0 = Temp
+            Temp = Y1
+            Y1 = X1
+            X1 = Temp
+        }
+        if (X0 > X1) {
+            Temp = X1
+            X1 = X0
+            X0 = Temp
+            Temp = Y1
+            Y1 = Y0
+            Y0 = Temp
+        }
+        DeltaX = X1 - X0
+        DeltaY = abs(Y1 - Y0)
+        Error = 0
+        DeltaErr = DeltaY / DeltaX
+        YStep = 0
+        RY = Y0
+        if (Y0 < Y1) {
+            YStep = 1
+        } else {
+            YStep = -1
+        }
+        for (RX = X0, X1) {
+            if (BigBrush) {
+                for (DRX = RX - 1, RX + 1) {
+                    for (DRY = RY - 1, RY + 1) {
+                        if (Steep) {
+                            I = DRX * 40 + DRY
+                        } else {
+                            I = DRY * 40 + DRX
+                        }
+                        Screen[I] = UseRGB:x()*65536 + UseRGB:y()*256 + UseRGB:z()
+                        Screen2[I] = UseRGB:x()*65536 + UseRGB:y()*256 + UseRGB:z()
+                    }
+                }
+            } else {
+                if (Steep) {
+                    I = RX * 40 + RY
+                } else {
+                    I = RY * 40 + RX
+                }
+                Screen[I] = UseRGB:x()*65536 + UseRGB:y()*256 + UseRGB:z()
+                Screen2[I] = UseRGB:x()*65536 + UseRGB:y()*256 + UseRGB:z()
+            }
+            Error = Error + DeltaErr
+            if (Error >= 0.5) {
+                RY = RY + YStep
+                Error = Error - YStep
+            }
+        }
+    }
+    
+    Continuous = 1
+    LastX = X
+    LastY = Y
+}
+
+if (~CursorX | ~CursorY) {
+    X = floor(CursorX * 40)
+    Y = floor(CursorY * 40)
+    I = Y * 40 + X
+    C = Screen[I]
+    RGBAtCursor = vec(floor(C / 65536), floor(C % 65536 / 256), C % 256)
+}
