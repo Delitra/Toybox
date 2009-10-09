@@ -19,6 +19,7 @@
 # $Id$
 
 import sys
+import os.path
 from optparse import OptionParser
 import midi
 from midi.MidiOutStream import MidiOutStream
@@ -130,7 +131,7 @@ def main():
     
     # Generate the E2 script in full
     try:
-        f = open("e2base.txt", "rb")
+        f = open(os.path.join(sys.path[0], "e2base.txt"), "rb")
         template = f.read()
         f.close()
         print template.replace("%DATA%", writer.get())
