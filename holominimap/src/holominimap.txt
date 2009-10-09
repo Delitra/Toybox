@@ -19,7 +19,7 @@
 @name HoloMinimap [sk89q]
 @inputs On Range SizeScale PositionScale TurboMode ShiftZ ExcludeSelf ExcludeEntities:array
 @outputs Ready
-@persist UseRange UseSizeScale UsePositionScale Found:array HaloIndex RenderIndex
+@persist UseRange UseSizeScale UsePositionScale Found:array CreatedHaloIndex RenderIndex
 @trigger On Range SizeScale PositionScale ExcludeSelf ExcludeEntities
 
 # Detect change in variables
@@ -75,10 +75,9 @@ if (first() | duped()) {
         runOnTick(0)
         stoptimer("query")
         
-        # Delete holograms
-        while (HaloIndex > 0) {
-            holoDelete(HaloIndex - 1)
-            HaloIndex--
+        # Hide holograms
+        for (I = 0, CreatedHaloIndex - 1) {
+            holoAlpha(I, 0)
         }
     }
 } elseif (~ExcludeSelf | ~ExcludeEntities) {
@@ -89,36 +88,33 @@ if (first() | duped()) {
     findDisallowEntities(ExcludeEntities)
 } elseif (On & clk("query")) {
     findInSphere(entity():pos(), UseRange)
+    findSortByDistance(vec()) # Prevent flickering
     
     Found = findToArray()
     
     # Create some holograms
-    NeedCreate = min(5, Found:count() - HaloIndex)
+    if (CreatedHaloIndex < 20) {
+        NeedCreate = 20 - CreatedHaloIndex - 1 # Create an initial number of holograms
+    } else {
+        NeedCreate = min(5, Found:count() - CreatedHaloIndex + 4)
+    }
     if (NeedCreate > 0) {
         Ready = 0
         Self = entity()
-        Nowhere = vec(0, 0, -9999999)
         for (I = 0, NeedCreate) {
-            holoCreate(HaloIndex)
-            holoParent(HaloIndex, Self) # Improves non-turbo mode
-            holoPos(HaloIndex, Nowhere)
-            HaloIndex++
+            holoCreate(CreatedHaloIndex)
+            holoParent(CreatedHaloIndex, Self) # Improves non-turbo mode
+            holoAlpha(CreatedHaloIndex, 0)
+            CreatedHaloIndex++
         }
-        Ready = Found:count() == HaloIndex
+        Ready = Found:count() <= CreatedHaloIndex
     } else {
         Ready = 1
     }
     
-    # Delete some holograms
-    Count = Found:count()
-    while (HaloIndex > Count) {
-        holoDelete(HaloIndex - 1)
-        HaloIndex--
-    }
-    
     # If turbo mode is not on, then we reset the loop only here, which
     # means the loop will only execute a minimum of once every 1 second
-    if (!TurboMode & RenderIndex >= HaloIndex) {
+    if (!TurboMode & RenderIndex >= CreatedHaloIndex) {
         RenderIndex = 0
     }
     
@@ -128,16 +124,17 @@ if (first() | duped()) {
     # Loop through the holograms that we need to update
     # We split it over several iterations so that we don't hit the
     # Expression 2 limit on operations
-    while (RenderIndex < HaloIndex) {
+    while (RenderIndex < CreatedHaloIndex) {
         if (minquota() < 380) {
             exit()
         }
         
         if (RenderIndex >= NumFound) { # Unused hologram
-            holoPos(HaloIndex, vec(0, 0, -9999999))
+            holoAlpha(RenderIndex, 0)
         } else {
             E = Found[RenderIndex, entity]
             HE = holoEntity(RenderIndex)
+            holoAlpha(RenderIndex, 0)
             # Detect the model to use by looking for keywords in the name
             # of the real prop's model filename
             Model = E:model()
@@ -173,11 +170,12 @@ if (first() | duped()) {
                 HE:setColor(E:getColor())
             }
             HE:setMaterial(E:getMaterial())
+            holoAlpha(RenderIndex, 255)
         }
         RenderIndex++
     }
     
-    if (TurboMode & RenderIndex >= HaloIndex) {
+    if (TurboMode & RenderIndex >= CreatedHaloIndex) {
         RenderIndex = 0
     }
 }
