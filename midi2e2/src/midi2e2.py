@@ -23,107 +23,120 @@ from optparse import OptionParser
 import midi
 from midi.MidiOutStream import MidiOutStream
 from midi.MidiInFile import MidiInFile
+import cStringIO as StringIO
 
-# Create a table of notes, although we could just calculate on the fly
-midi_freqs = []
-for i in range(0, 127):
-   midi_freqs.append((440 / 32.) * (2 ** ((i - 9) / 12.)));
+class E2VectorWriter:
+    def __init__(self, max_num_notes):
+        self.notes = []
+        self.max_num_notes = max_num_notes
+    
+    def note(self, n):
+        self.notes.append(n)
+    
+    def get(self):
+        def sort(a, b):
+            if a.start == b.start:
+                return 0
+            elif a.start < b.start:
+                return -1
+            else:
+                return 1
+        self.notes.sort(sort)
+        buffer = StringIO.StringIO()
+        index = 0
+        for n in self.notes:
+            if self.max_num_notes != 0 and index == self.max_num_notes:
+                break
+            buffer.write("S[%d,vector]=vec(%d,%d,%d)\r\n" % (index, n.note, n.start, n.end))
+            index = index + 1
+        return buffer.getvalue()
 
-class E2Writer(MidiOutStream):
-    def __init__(self, channels=[0], max_notes=0):
+class NoteState:
+    def __init__(self, channel, note, start):
+        self.channel = channel
+        self.note = note
+        self.start = start
+        self.end = None
+
+class NoteStream(MidiOutStream):
+    def __init__(self, channels, writer, force_tempo=120):
         MidiOutStream.__init__(self)
-        self.active = []
-        for i in range(0, 16):
-            self.active.append(None)
-        self.max_notes = max_notes
-        self.note_count = 0
-        self.channels = {}
-        for i in range(0, len(channels)):
-            self.channels[channels[i]] = i
+        self.notes = []
+        self.channels = channels
+        self.writer = writer
+        self.force_tempo = force_tempo
+    
+    def header(self, format=0, nTracks=1, division=96):
+        self.ppqn = division
     
     def note_on(self, channel=0, note=0x40, velocity=0x40):
         if channel in self.channels:
-            if self.active[channel] != None:
-                #print "# 2nd_note = %d" % note
-                pass
-            else:
-                #print "# 1st_note = %d" % note
-                self.active[channel] = {
-                    'note': note,
-                    'time': self.rel_time(),
-                }
+            self.notes.append(NoteState(channel, note, self.convert_time(self.abs_time())))
     
     def note_off(self, channel=0, note=0x40, velocity=0x40):
-        if self.max_notes > 0 and self.note_count > self.max_notes:
-            raise PrematureEnd(self.abs_time())
         if channel in self.channels:
-            chan_index = self.channels[channel]
-            if not self.active[channel]:
-                #print "# MISSING NOTE"
-                pass
-            else:
-                self.note_count = self.note_count + 1
-                current = self.active[channel]
-                if current['note'] == note:
-                    if current['time'] > 0: # Silence
-                        print "SongCh%d:pushVector2(vec2(0, %d)) # Silence" % (chan_index, current['time']*2)
-                    freq = midi_freqs[note]
-                    print "SongCh%d:pushVector2(vec2(%.1f, %d))" % (chan_index, freq, self.rel_time()*2)
-                    self.active[channel] = None
-                else:
-                    #print "# 2nd_note RES = %d" % note
-                    pass
+            for n in self.notes:
+                if n.channel == channel and n.note == note:
+                    n.end = self.convert_time(self.abs_time())
+                    self.notes.remove(n)
+                    self.writer.note(n)
+                    return
+            raise Exception("Found orphan off-note on channel %d, note %d" % (channel, note))     
+    
+    def convert_time(self, time):
+        return time / float(self.ppqn) * 60. / self.force_tempo * 1000 # TODO: Timing may be off
+    
+    #def tempo(self, value):
+    #    print value
+    #    self.current_tempo = value
     
     def device_name(self, data):
         pass
+    
+    def sysex_event(self, data):
+        pass
 
-parser = OptionParser("%prog MIDIFILE")
-parser.add_option("-t", "--track", dest="track", action="append",
-                  help="use this track", metavar="TRACK")
-(options, args) = parser.parse_args()
+def main():
+    parser = OptionParser("%prog MIDIFILE")
+    parser.add_option("-t", "--track", dest="track", action="append",
+                      help="use this track, multiple tracks allowed", metavar="TRACK")
+    parser.add_option("-l", "--limit", dest="limit",
+                      help="maximum number of notes", metavar="NUM")
+    parser.add_option("-b", "--tempo", dest="tempo",
+                      help="override BPM", metavar="BPM")
+    (options, args) = parser.parse_args()
+    
+    # Parse arguments
+    if len(args) == 0:
+        parser.error("Missing required argument: MIDIFILE")
+    elif len(args) > 1:
+        parser.error("Too many arguments")
+    midi_file = args[0]
 
-if len(args) == 0:
-    parser.error("Missing required argument: MIDIFILE")
-elif len(args) > 1:
-    parser.error("Too many arguments")
+    # Get options
+    tracks = map(int, options.track) if options.track != None else [0]
+    note_limit = int(options.limit) if options.limit != None else 0
+    bpm = int(options.tempo) if options.tempo != None else 120
+    
+    # Parse the MIDI file
+    try:
+        writer = E2VectorWriter(note_limit)
+        event_handler = NoteStream(tracks, writer, force_tempo=bpm)
+        midi_in = MidiInFile(event_handler, midi_file)
+        midi_in.read()
+    except IOError, e:
+        print >>sys.stderr, "error: Failed to read MIDI file: %s" % e
+        sys.exit(1)
+    
+    # Generate the E2 script in full
+    try:
+        f = open("e2base.txt", "rb")
+        template = f.read()
+        f.close()
+        print template.replace("%DATA%", writer.get())
+    except IOError, e:
+        print >>sys.stderr, "error: Failed to read E2 template file: %s" % e
+        sys.exit(2)
 
-# Get tracks to read
-if options.track != None:
-    tracks = map(int, options.track)
-else:
-    tracks = [1]
-
-event_handler = E2Writer(tracks)
-in_file = args[0]
-try:
-    midi_in = MidiInFile(event_handler, in_file)
-    print """@inputs On
-@persist Index0 SongCh0:array
-
-if (first()) {"""
-    midi_in.read()
-    print """}
-
-if (On) {
-    if (first() | ~On | clk("play0")) {
-        # Channel 0
-        Freq = SongCh0[Index0, vector2]:x()
-        Length = SongCh0[Index0, vector2]:y()
-        if (Freq > 0) {
-            Pitch = Freq * 5 / 22
-            soundPlay(0, Length / 1000, "synth/sine.wav")
-            soundPitch(0, Pitch)
-        } else {
-            soundStop(0)
-        }
-        Index0++
-        if (Index0 >= SongCh0:count()) { Index0 = 0 }
-        timer("play0", Length)
-    }
-} else {
-    soundStop(0)
-    stoptimer("play0")
-}"""
-except IOError, e:
-    print >>sys.stderr, "error: Failed to read MIDI file: %s" % e
-    sys.exit(1)
+if __name__ == "__main__":
+    main()
