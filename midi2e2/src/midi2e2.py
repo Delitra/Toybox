@@ -27,9 +27,11 @@ from midi.MidiInFile import MidiInFile
 import cStringIO as StringIO
 
 class E2VectorWriter:
-    def __init__(self, max_num_notes):
+    def __init__(self, max_num_notes, lower_freq, upper_freq):
         self.notes = []
         self.max_num_notes = max_num_notes
+        self.lower_freq = lower_freq
+        self.upper_freq = upper_freq
     
     def note(self, n):
         self.notes.append(n)
@@ -48,6 +50,10 @@ class E2VectorWriter:
         for n in self.notes:
             if self.max_num_notes != 0 and index == self.max_num_notes:
                 break
+            freq = (440 / 32) * (2^((n.note - 9) / 12))
+            if freq > self.upper_freq or freq < self.lower_freq:
+                print >>sys.stderr, "# Note dropped, freq=%.2f" % freq
+                continue # Frequency capping
             buffer.write("S[%d,vector]=vec(%d,%d,%d)\r\n" % (index, n.note, n.start, n.end))
             index = index + 1
         return buffer.getvalue()
@@ -98,13 +104,17 @@ class NoteStream(MidiOutStream):
         pass
 
 def main():
-    parser = OptionParser("%prog MIDIFILE")
+    parser = OptionParser("%prog [options] MIDIFILE")
     parser.add_option("-t", "--track", dest="track", action="append",
                       help="use this track, multiple tracks allowed", metavar="TRACK")
     parser.add_option("-l", "--limit", dest="limit",
                       help="maximum number of notes", metavar="NUM")
     parser.add_option("-b", "--tempo", dest="tempo",
                       help="override BPM", metavar="BPM")
+    parser.add_option("--lower-freq", dest="lower_freq",
+                      help="lower frequency", metavar="FREQ", default=0)
+    parser.add_option("--upper-freq", dest="upper_freq",
+                      help="upper frequency", metavar="FREQ", default=4972)
     (options, args) = parser.parse_args()
     
     # Parse arguments
@@ -121,7 +131,7 @@ def main():
     
     # Parse the MIDI file
     try:
-        writer = E2VectorWriter(note_limit)
+        writer = E2VectorWriter(note_limit, int(options.lower_freq), int(options.upper_freq))
         event_handler = NoteStream(tracks, writer, force_tempo=bpm)
         midi_in = MidiInFile(event_handler, midi_file)
         midi_in.read()
