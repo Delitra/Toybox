@@ -1,0 +1,144 @@
+@name LFMIDI Player [sk89q]
+@inputs Filename:string
+@outputs Index NumNotes Time TimeLength Status
+@persist LastFilename:string Data:string Filename:string HeaderLen NoteStructLen NoteDataOffset Start Channels:array ChannelSounds:array ChannelCount
+
+# Status:
+#   0 - No song
+#   1 - Loading
+#   2 - Playing
+#   100 - File load error
+#   101 - Corrupt file error
+#   102 - Bad version error
+
+if (first() | duped()) {
+    Status = 0
+    
+    ChannelCount = 8
+    ChannelSounds[1, string] = "synth/sine.wav"
+    ChannelSounds[2, string] = "synth/tri.wav"
+    ChannelSounds[3, string] = "synth/sine.wav"
+    ChannelSounds[4, string] = "synth/tri.wav"
+    ChannelSounds[5, string] = "synth/sine.wav"
+    ChannelSounds[6, string] = "synth/tri.wav"
+    ChannelSounds[7, string] = "synth/sine.wav"
+    ChannelSounds[8, string] = "synth/tri.wav"
+
+    # Only one sound per entity, so we need to create some holograms
+    # to act as our players
+    for (I = 0, ChannelCount) {
+        holoCreate(I, entity():pos(), vec())
+        holoParent(I, entity())
+    }
+    
+    # Load the file
+    if (Filename:length() > 0) {
+        print("[LFMIDI] Loading " + Filename + "...")
+        Status = 1
+        runOnFile(1)
+        fileRemove(Filename)
+        fileLoad(Filename)
+        LastFilename = Filename
+        timer("LoadingError", 4000)
+    }
+} elseif (~Filename) {
+    stoptimer("LoadingError")
+    
+    if (LastFilename:length() > 0) {
+        fileRemove(LastFilename)
+    }
+    
+    if (Filename:length() > 0) {
+        print("[LFMIDI] Loading " + Filename + "...")
+        Status = 1
+        runOnFile(1)
+        fileRemove(Filename)
+        fileLoad(Filename)
+        LastFilename = Filename
+        timer("LoadingError", 9000)
+    } else {
+        Status = 0
+    }
+} elseif (clk("LoadingError")) {
+    Status = 100
+} elseif (fileClk()) {
+    stoptimer("LoadingError")    
+    
+    Data = fileRead(Filename) 
+    fileRemove(Filename)
+    MagicBytes = Data:sub(1, 6)
+    if (MagicBytes != "LFMIDI") {
+        print("[LFMIDI] error: Uploaded file is not a LFMIDI file")
+        Status = 101
+    } else {
+        HeaderLen = toByte(Data, 7)
+        Version = toByte(Data, 8)
+        if (Version != 1) {
+            print("[LFMIDI] error: Unknown version " + Version)
+            Status = 102
+        } else {
+            NumNotes = (toByte(Data, 9) - 1) * 255 + toByte(Data, 10) - 1
+            NoteStructLen = toByte(Data, 11)
+            NoteDataOffset = 6 + 1 + HeaderLen + 1
+            print("[LFMIDI] File version: " + toString(Version))
+            print("[LFMIDI] Number of notes: " + toString(NumNotes))
+            
+            Status = 2
+            Start = curtime() * 1000
+            Length = NumNotes
+            Offset = NoteDataOffset + (NumNotes - 1) * NoteStructLen
+            NoteEnd = (toByte(Data, Offset + 4) - 1) * 255 * 255 + 
+                (toByte(Data, Offset + 5) - 1) * 255 + toByte(Data, Offset + 6) - 1
+            TimeLength = NoteEnd / 1000
+            Index = 1
+            
+            interval(10)
+        }
+    }
+} elseif (clk() & Status == 2) {
+    while (1) {
+        Now = curtime() * 1000
+        Time = (Now - Start) / 1000
+
+        if (Index > NumNotes) { # Song is over
+            Offset = NoteDataOffset + (NumNotes - 1) * NoteStructLen
+            NoteEnd = (toByte(Data, Offset + 4) - 1) * 255 * 255 + 
+                (toByte(Data, Offset + 5) - 1) * 255 + toByte(Data, Offset + 6) - 1
+                    
+            if (NoteEnd <= Now - Start) { # Stopped playing
+                Start = Now
+                Index = 0
+                Channels = array()
+            } else {
+                break
+            }
+        }
+
+        Offset = NoteDataOffset + (Index - 1) * NoteStructLen
+        NoteValue = toByte(Data, Offset)
+        NoteStart = (toByte(Data, Offset + 1) - 1) * 255 * 255 + 
+            (toByte(Data, Offset + 2) - 1) * 255 + toByte(Data, Offset + 3) - 1
+        NoteEnd = (toByte(Data, Offset + 4) - 1) * 255 * 255 + 
+            (toByte(Data, Offset + 5) - 1) * 255 + toByte(Data, Offset + 6) - 1
+        
+        if (NoteStart <= Now - Start) { # Y is start time
+            # We have to play the note
+            for (I = 1, ChannelCount) {
+                if (Channels[I, number] < Now - Start) {
+                    Freq = (440 / 32) * (2^((NoteValue - 9) / 12))
+                    Pitch = Freq * 5 / 22
+                    holoEntity(I):soundPlay(Index, (NoteEnd - NoteStart) / 1000, ChannelSounds[I, string])
+                    soundPitch(Index, Pitch)
+                    Channels[I, number] = NoteEnd
+                    break
+                }
+            }
+        } else {
+            break
+        }
+
+        Index++
+    }
+    
+    interval(10)
+}

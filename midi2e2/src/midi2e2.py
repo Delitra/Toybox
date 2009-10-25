@@ -25,8 +25,9 @@ import midi
 from midi.MidiOutStream import MidiOutStream
 from midi.MidiInFile import MidiInFile
 import cStringIO as StringIO
+import struct
 
-class E2VectorWriter:
+class NoteWriter:
     def __init__(self, max_num_notes, lower_freq, upper_freq):
         self.notes = []
         self.max_num_notes = max_num_notes
@@ -36,7 +37,10 @@ class E2VectorWriter:
     def note(self, n):
         self.notes.append(n)
     
-    def get(self):
+    def num_notes(self):
+        return min(self.max_num_notes, len(self.notes)) if self.max_num_notes > 0 else len(self.notes)
+    
+    def write(self, buffer, func):
         def sort(a, b):
             if a.start == b.start:
                 return 0
@@ -45,17 +49,50 @@ class E2VectorWriter:
             else:
                 return 1
         self.notes.sort(sort)
-        buffer = StringIO.StringIO()
         index = 0
         for n in self.notes:
-            if self.max_num_notes != 0 and index == self.max_num_notes:
+            if self.max_num_notes != 0 and index > self.max_num_notes:
                 break
             freq = (440 / 32) * (2^((n.note - 9) / 12))
             if freq > self.upper_freq or freq < self.lower_freq:
                 print >>sys.stderr, "# Note dropped, freq=%.2f" % freq
                 continue # Frequency capping
-            buffer.write("S[%d,vector]=vec(%d,%d,%d)\r\n" % (index, n.note, n.start, n.end))
+            func(buffer, index, n)
             index = index + 1
+
+class E2VectorWriter(NoteWriter):
+    def get(self):
+        f = open(os.path.join(sys.path[0], "e2base.txt"), "rb")
+        template = f.read()
+        f.close()
+        
+        buffer = StringIO.StringIO()
+        def w(buffer, index, n):
+            buffer.write("S[%d,vector]=vec(%d,%d,%d)\r\n" % (index, n.note, n.start, n.end))
+        self.write(buffer, w)
+        return template.replace("%DATA%", buffer.getvalue())
+
+class DataFileWriter(NoteWriter):
+    def get(self):
+        buffer = StringIO.StringIO()
+        buffer.write("LFMIDI") # Magic byte
+        buffer.write(struct.pack(">B", 4)) # Header of length 4
+        buffer.write(struct.pack(">B", 1)) # Version
+        a = int(self.num_notes()) / 255 + 1
+        b = int(self.num_notes()) % 255 + 1
+        buffer.write(struct.pack(">BB", a, b))
+        buffer.write(struct.pack(">B", 1 + 3 + 3)) # Note struct length
+        def w(buffer, index, n):
+            buffer.write(struct.pack(">B", n.note + 1))
+            a = int(n.start) / 255 / 255 + 1
+            b = int(n.start) / 255 % 255 + 1
+            c = int(n.start) % 255 + 1
+            buffer.write(struct.pack(">BBB", a, b, c))
+            a = int(n.end) / 255 / 255 + 1
+            b = int(n.end) / 255 % 255 + 1
+            c = int(n.end) % 255 + 1
+            buffer.write(struct.pack(">BBB", a, b, c))
+        self.write(buffer, w)
         return buffer.getvalue()
 
 class NoteState:
@@ -105,6 +142,8 @@ class NoteStream(MidiOutStream):
 
 def main():
     parser = OptionParser("%prog [options] MIDIFILE")
+    parser.add_option("-f", "--format", dest="format",
+                      help="format", metavar="FMT")
     parser.add_option("-t", "--track", dest="track", action="append",
                       help="use this track, multiple tracks allowed", metavar="TRACK")
     parser.add_option("-l", "--limit", dest="limit",
@@ -128,10 +167,16 @@ def main():
     tracks = map(int, options.track) if options.track != None else [0]
     note_limit = int(options.limit) if options.limit != None else 0
     bpm = int(options.tempo) if options.tempo != None else 120
+    if options.format == None or options.format.lower() == "e2":
+        fmt_cls = E2VectorWriter
+    elif options.format.lower() == "lfmidi":
+        fmt_cls = DataFileWriter
+    else:
+        parser.error("Unknown format - accepted formats: e2, lfmidi")
     
     # Parse the MIDI file
     try:
-        writer = E2VectorWriter(note_limit, int(options.lower_freq), int(options.upper_freq))
+        writer = fmt_cls(note_limit, int(options.lower_freq), int(options.upper_freq))
         event_handler = NoteStream(tracks, writer, force_tempo=bpm)
         midi_in = MidiInFile(event_handler, midi_file)
         midi_in.read()
@@ -139,15 +184,7 @@ def main():
         print >>sys.stderr, "error: Failed to read MIDI file: %s" % e
         sys.exit(1)
     
-    # Generate the E2 script in full
-    try:
-        f = open(os.path.join(sys.path[0], "e2base.txt"), "rb")
-        template = f.read()
-        f.close()
-        print template.replace("%DATA%", writer.get())
-    except IOError, e:
-        print >>sys.stderr, "error: Failed to read E2 template file: %s" % e
-        sys.exit(2)
+    print writer.get()
 
 if __name__ == "__main__":
     main()
