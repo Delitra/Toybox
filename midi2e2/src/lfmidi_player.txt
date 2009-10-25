@@ -39,7 +39,7 @@ if (first() | duped()) {
         fileRemove(Filename)
         fileLoad(Filename)
         LastFilename = Filename
-        timer("LoadingError", 4000)
+        timer("LoadingError", 9000)
     }
 } elseif (~Filename) {
     stoptimer("LoadingError")
