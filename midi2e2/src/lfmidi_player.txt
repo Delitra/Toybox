@@ -129,7 +129,7 @@ if (first() | duped()) {
                 (toByte(Data, Offset + 5) - 1) * 255 + toByte(Data, Offset + 6) - 1
             # We have to play the note
             for (I = 1, ChannelCount) {
-                if (Channels[I, number] < Now - Start) {
+                if (Channels[I, number] + 50 < Now - Start) {
                     Freq = (440 / 32) * (2^((NoteValue - 9) / 12))
                     Pitch = Freq * 5 / 22
                     holoEntity(I):soundPlay(Index, (NoteEnd - NextNoteStart) / 1000, ChannelSounds[I, string])
