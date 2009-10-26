@@ -1,7 +1,7 @@
 @name LFMIDI Player [sk89q]
 @inputs Filename:string
 @outputs Index NumNotes Time TimeLength Status
-@persist LastFilename:string Data:string Filename:string HeaderLen NoteStructLen NoteDataOffset Start Channels:array ChannelSounds:array ChannelCount
+@persist LastFilename:string Data:string Filename:string HeaderLen NoteStructLen NoteDataOffset Start Channels:array ChannelSounds:array ChannelCount NextNoteStart
 
 # Status:
 #   0 - No song
@@ -92,6 +92,10 @@ if (first() | duped()) {
             TimeLength = NoteEnd / 1000
             Index = 1
             
+            Offset = NoteDataOffset + Index * NoteStructLen
+            NextNoteStart = (toByte(Data, Offset + 1) - 1) * 255 * 255 + 
+                (toByte(Data, Offset + 2) - 1) * 255 + toByte(Data, Offset + 3) - 1
+            
             interval(10)
         }
     }
@@ -113,26 +117,27 @@ if (first() | duped()) {
                 break
             }
         }
-
-        Offset = NoteDataOffset + (Index - 1) * NoteStructLen
-        NoteValue = toByte(Data, Offset)
-        NoteStart = (toByte(Data, Offset + 1) - 1) * 255 * 255 + 
-            (toByte(Data, Offset + 2) - 1) * 255 + toByte(Data, Offset + 3) - 1
-        NoteEnd = (toByte(Data, Offset + 4) - 1) * 255 * 255 + 
-            (toByte(Data, Offset + 5) - 1) * 255 + toByte(Data, Offset + 6) - 1
         
-        if (NoteStart <= Now - Start) { # Y is start time
+        if (NextNoteStart <= Now - Start) { # Y is start time
+            Offset = NoteDataOffset + (Index - 1) * NoteStructLen
+            NoteValue = toByte(Data, Offset)
+            NoteEnd = (toByte(Data, Offset + 4) - 1) * 255 * 255 + 
+                (toByte(Data, Offset + 5) - 1) * 255 + toByte(Data, Offset + 6) - 1
             # We have to play the note
             for (I = 1, ChannelCount) {
                 if (Channels[I, number] < Now - Start) {
                     Freq = (440 / 32) * (2^((NoteValue - 9) / 12))
                     Pitch = Freq * 5 / 22
-                    holoEntity(I):soundPlay(Index, (NoteEnd - NoteStart) / 1000, ChannelSounds[I, string])
+                    holoEntity(I):soundPlay(Index, (NoteEnd - NextNoteStart) / 1000, ChannelSounds[I, string])
                     soundPitch(Index, Pitch)
                     Channels[I, number] = NoteEnd
                     break
                 }
             }
+            
+            Offset = NoteDataOffset + Index * NoteStructLen
+            NextNoteStart = (toByte(Data, Offset + 1) - 1) * 255 * 255 + 
+                (toByte(Data, Offset + 2) - 1) * 255 + toByte(Data, Offset + 3) - 1
         } else {
             break
         }
