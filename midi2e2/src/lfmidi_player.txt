@@ -7,6 +7,7 @@
 #   0 - No song
 #   1 - Loading
 #   2 - Playing
+#   6 - Waiting for load ready
 #   100 - File load error
 #   101 - Corrupt file error
 #   102 - Bad version error
@@ -33,36 +34,45 @@ if (first() | duped()) {
     
     # Load the file
     if (Filename:length() > 0) {
-        print("[LFMIDI] Loading " + Filename + "...")
-        Status = 1
-        runOnFile(1)
-        fileRemove(Filename)
-        fileLoad(Filename)
-        LastFilename = Filename
-        timer("LoadingError", 9000)
+        timer("WaitLoad", 10)
     }
 } elseif (~Filename) {
+    stoptimer("WaitLoad")
     stoptimer("LoadingError")
+    runOnFile(0)
+    
+    # Stop all sounds
+    Channels = array()
+    soundPurge()
     
     if (LastFilename:length() > 0) {
         fileRemove(LastFilename)
     }
     
     if (Filename:length() > 0) {
+        fileRemove(Filename)
+        timer("WaitLoad", 10)
+    } else {
+        Status = 0
+    }
+} elseif (clk("WaitLoad")) {
+    if (!fileCanLoad()) {
+        print("[LFMIDI] Can't load yet, waiting 3 seconds...")
+        Status = 6
+        timer("WaitLoad", 3000)
+    } else {
         print("[LFMIDI] Loading " + Filename + "...")
         Status = 1
         runOnFile(1)
-        fileRemove(Filename)
         fileLoad(Filename)
         LastFilename = Filename
         timer("LoadingError", 9000)
-    } else {
-        Status = 0
     }
 } elseif (clk("LoadingError")) {
     Status = 100
 } elseif (fileClk()) {
-    stoptimer("LoadingError")    
+    stoptimer("WaitLoad")
+    stoptimer("LoadingError")
     
     Data = fileRead(Filename) 
     fileRemove(Filename)
@@ -92,7 +102,7 @@ if (first() | duped()) {
             TimeLength = NoteEnd / 1000
             Index = 1
             
-            Offset = NoteDataOffset + Index * NoteStructLen
+            Offset = NoteDataOffset + 0 * NoteStructLen
             NextNoteStart = (toByte(Data, Offset + 1) - 1) * 255 * 255 + 
                 (toByte(Data, Offset + 2) - 1) * 255 + toByte(Data, Offset + 3) - 1
             
