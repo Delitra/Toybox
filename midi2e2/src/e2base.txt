@@ -46,7 +46,7 @@ if (first() | duped()) {
         if (Note:y() <= Now - Start) { # Y is start time
             # We have to play the note
             for (I = 1, ChannelCount) {
-                if (Channels[I, number] < Now - Start) {
+                if (Channels[I, number] + 100 < Now - Start) {
                     Freq = (440 / 32) * (2^((Note:x() - 9) / 12))
                     Pitch = Freq * 5 / 22
                     holoEntity(I):soundPlay(Index, (Note:z() - Note:y()) / 1000, ChannelSounds[I, string])
