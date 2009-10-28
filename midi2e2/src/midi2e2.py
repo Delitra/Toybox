@@ -21,170 +21,93 @@
 import sys
 import os.path
 from optparse import OptionParser
-import midi
-from midi.MidiOutStream import MidiOutStream
-from midi.MidiInFile import MidiInFile
 import cStringIO as StringIO
-import struct
+import re
+from m2e2 import mk_filter
+from m2e2.reader import read
+from m2e2.writers.lfmidi import LFMIDIWriter
+from m2e2.writers.e2 import E2Writer
 
-class NoteWriter:
-    def __init__(self, max_num_notes, lower_freq, upper_freq):
-        self.notes = []
-        self.max_num_notes = max_num_notes
-        self.lower_freq = lower_freq
-        self.upper_freq = upper_freq
-    
-    def note(self, n):
-        self.notes.append(n)
-    
-    def num_notes(self):
-        return min(self.max_num_notes, len(self.notes)) if self.max_num_notes > 0 else len(self.notes)
-    
-    def write(self, buffer, func):
-        def sort(a, b):
-            if a.start == b.start:
-                return 0
-            elif a.start < b.start:
-                return -1
-            else:
-                return 1
-        self.notes.sort(sort)
-        index = 0
-        for n in self.notes:
-            if self.max_num_notes != 0 and index > self.max_num_notes:
-                break
-            freq = (440 / 32) * (2^((n.note - 9) / 12))
-            if freq > self.upper_freq or freq < self.lower_freq:
-                print >>sys.stderr, "# Note dropped, freq=%.2f" % freq
-                continue # Frequency capping
-            func(buffer, index, n)
-            index = index + 1
-
-class E2VectorWriter(NoteWriter):
-    def get(self):
-        f = open(os.path.join(sys.path[0], "e2base.txt"), "rb")
-        template = f.read()
-        f.close()
-        
-        buffer = StringIO.StringIO()
-        def w(buffer, index, n):
-            buffer.write("S[%d,vector]=vec(%d,%d,%d)\r\n" % (index, n.note, n.start, n.end))
-        self.write(buffer, w)
-        return template.replace("%DATA%", buffer.getvalue())
-
-class DataFileWriter(NoteWriter):
-    def get(self):
-        buffer = StringIO.StringIO()
-        buffer.write("LFMIDI") # Magic byte
-        buffer.write(struct.pack(">B", 4)) # Header of length 4
-        buffer.write(struct.pack(">B", 1)) # Version
-        a = int(self.num_notes()) / 255 + 1
-        b = int(self.num_notes()) % 255 + 1
-        buffer.write(struct.pack(">BB", a, b))
-        buffer.write(struct.pack(">B", 1 + 3 + 3)) # Note struct length
-        def w(buffer, index, n):
-            buffer.write(struct.pack(">B", n.note + 1))
-            a = int(n.start) / 255 / 255 + 1
-            b = int(n.start) / 255 % 255 + 1
-            c = int(n.start) % 255 + 1
-            buffer.write(struct.pack(">BBB", a, b, c))
-            a = int(n.end) / 255 / 255 + 1
-            b = int(n.end) / 255 % 255 + 1
-            c = int(n.end) % 255 + 1
-            buffer.write(struct.pack(">BBB", a, b, c))
-        self.write(buffer, w)
-        return buffer.getvalue()
-
-class NoteState:
-    def __init__(self, channel, note, start):
-        self.channel = channel
-        self.note = note
-        self.start = start
-        self.end = None
-
-class NoteStream(MidiOutStream):
-    def __init__(self, channels, writer, force_tempo=120):
-        MidiOutStream.__init__(self)
-        self.notes = []
-        self.channels = channels
-        self.writer = writer
-        self.force_tempo = force_tempo
-    
-    def header(self, format=0, nTracks=1, division=96):
-        self.ppqn = division
-    
-    def note_on(self, channel=0, note=0x40, velocity=0x40):
-        if channel in self.channels:
-            self.notes.append(NoteState(channel, note, self.convert_time(self.abs_time())))
-    
-    def note_off(self, channel=0, note=0x40, velocity=0x40):
-        if channel in self.channels:
-            for n in self.notes:
-                if n.channel == channel and n.note == note:
-                    n.end = self.convert_time(self.abs_time())
-                    self.notes.remove(n)
-                    self.writer.note(n)
-                    return
-            raise Exception("Found orphan off-note on channel %d, note %d" % (channel, note))     
-    
-    def convert_time(self, time):
-        return time / float(self.ppqn) * 60. / self.force_tempo * 1000 # TODO: Timing may be off
-    
-    #def tempo(self, value):
-    #    print value
-    #    self.current_tempo = value
-    
-    def device_name(self, data):
-        pass
-    
-    def sysex_event(self, data):
-        pass
+# Hex dump from http://code.activestate.com/recipes/142812/
+FILTER=''.join([(len(repr(chr(x)))==3) and chr(x) or '.' for x in range(256)])
+def hexdump(src, length=16):
+    result=[]
+    for i in xrange(0, len(src), length):
+       s = src[i:i+length]
+       hexa = ' '.join(["%02X"%ord(x) for x in s])
+       printable = s.translate(FILTER)
+       result.append("%04X   %-*s   %s\n" % (i, length*3, hexa, printable))
+    return ''.join(result)
 
 def main():
+    print >>sys.stderr, "midi2e2"
+    print >>sys.stderr, "Copyright (C) 2008-2009 sk89q <http://sk89q.therisenrealm.com>"
+    print >>sys.stderr, ""
+    
     parser = OptionParser("%prog [options] MIDIFILE")
-    parser.add_option("-f", "--format", dest="format",
-                      help="format", metavar="FMT")
-    parser.add_option("-t", "--track", dest="track", action="append",
-                      help="use this track, multiple tracks allowed", metavar="TRACK")
-    parser.add_option("-l", "--limit", dest="limit",
-                      help="maximum number of notes", metavar="NUM")
-    parser.add_option("-b", "--tempo", dest="tempo",
-                      help="override BPM", metavar="BPM")
-    parser.add_option("--lower-freq", dest="lower_freq",
-                      help="lower frequency", metavar="FREQ", default=0)
-    parser.add_option("--upper-freq", dest="upper_freq",
-                      help="upper frequency", metavar="FREQ", default=4972)
+    parser.add_option("--hex-dump", dest="hex_dump", help="output a hex dump", action="store_true")
+    parser.add_option("-f", "--format", dest="format", help="format", metavar="FMT")
+    parser.add_option("-t", "--tracks", dest="tracks", help="use these tracks, starting from 1, delimited by commas or spaces", metavar="TRACKS")
+    parser.add_option("-b", "--tempo", dest="tempo", help="override BPM", metavar="BPM")
+    parser.add_option("--lower-freq", dest="lower_freq", help="lower frequency", metavar="FREQ", default=0)
+    parser.add_option("--upper-freq", dest="upper_freq", help="upper frequency", metavar="FREQ", default=4972)
+    parser.add_option("--max-length", dest="max_length", help="maximum time for song in ms", metavar="TIME", default=0)
     (options, args) = parser.parse_args()
     
     # Parse arguments
-    if len(args) == 0:
-        parser.error("Missing required argument: MIDIFILE")
-    elif len(args) > 1:
-        parser.error("Too many arguments")
+    if len(args) == 0: parser.error("Missing required argument: MIDIFILE")
+    elif len(args) > 1: parser.error("Too many arguments")
     midi_file = args[0]
 
-    # Get options
-    tracks = map(int, options.track) if options.track != None else [0]
-    note_limit = int(options.limit) if options.limit != None else 0
-    bpm = int(options.tempo) if options.tempo != None else 120
-    if options.format == None or options.format.lower() == "e2":
-        fmt_cls = E2VectorWriter
-    elif options.format.lower() == "lfmidi":
-        fmt_cls = DataFileWriter
-    else:
-        parser.error("Unknown format - accepted formats: e2, lfmidi")
+    # Get tracks
+    tracks = []
+    if options.tracks != None:
+        tracks_input = re.split("\s+|,", options.tracks)
+        for tr in tracks_input:
+            try:
+                tr = int(tr)
+                if tr < 1: parser.error("The first track is number 1")
+                if tr > 16: parser.error("The last track is number 16")
+                if (tr - 1) not in tracks: tracks.append(tr - 1)
+            except ValueError:
+                parser.error("A non-numeric track was inputted")
+    
+    # Get other arguments
+    try:
+        max_length = int(options.max_length) if options.max_length != None else 0
+        bpm = int(options.tempo) if options.tempo != None else 120
+        lower_freq = int(options.lower_freq) if options.lower_freq != None else 0
+        upper_freq = int(options.upper_freq) if options.upper_freq != None else 0
+        if options.format == None or options.format.lower() == "e2":
+            fmt_cls = E2Writer
+        elif options.format.lower() == "lfmidi":
+            fmt_cls = LFMIDIWriter
+        else:
+            parser.error("Unknown format -- accepted formats: e2, lfmidi")
+    except ValueError:
+        parser.error("A non-numeric argument was given to a numeric argument")
     
     # Parse the MIDI file
     try:
-        writer = fmt_cls(note_limit, int(options.lower_freq), int(options.upper_freq))
-        event_handler = NoteStream(tracks, writer, force_tempo=bpm)
-        midi_in = MidiInFile(event_handler, midi_file)
-        midi_in.read()
+        f = mk_filter(use_tracks=tracks, lower_freq=lower_freq,
+                      upper_freq=upper_freq, max_time=max_length)
+        data = read(midi_file, force_tempo=bpm, f=f)
+        
+        if len(data.notes) == 0:
+            print >>sys.stderr, "error: MIDI file contained no notes or filter generated no notes"
+            sys.exit(10)
+
+        buffer = StringIO.StringIO()
+        writer = fmt_cls(data, buffer)
+        writer.write()
+        
+        if options.hex_dump:
+            print(hexdump(buffer.getvalue()))
+        else:
+            print(buffer.getvalue())
     except IOError, e:
         print >>sys.stderr, "error: Failed to read MIDI file: %s" % e
-        sys.exit(1)
-    
-    print writer.get()
+        sys.exit(3)
 
 if __name__ == "__main__":
     main()
