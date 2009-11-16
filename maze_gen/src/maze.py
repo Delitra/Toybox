@@ -165,7 +165,7 @@ class AdvDupeMaze:
                     not self.is_accounted(x, start_y - 1, dir):
                     start_y = start_y - 1
                     self.account(start_x, start_y, dir)
-            for i in range(1, self.maze.width - end_y):
+            for i in range(1, self.maze.height - end_y):
                 if not self.maze.is_open(x, end_y + 1, dir) and \
                     not self.is_accounted(x, end_y + 1, dir):
                     end_y = end_y + 1
