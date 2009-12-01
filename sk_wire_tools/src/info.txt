@@ -1,0 +1,8 @@
+"AddonInfo"
+{
+    "name" "SK's Wire Tools"
+    "version" "Nightly"
+    "author_name" "sk89q"
+    "author_url" "http://www.sk89q.com"
+    "info" "Wire tools by sk89q"
+}
