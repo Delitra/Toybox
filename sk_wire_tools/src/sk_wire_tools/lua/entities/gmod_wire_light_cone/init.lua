@@ -89,6 +89,8 @@ function ENT:OnRemove()
 end
 
 function ENT:TriggerInput(iname, value)
+    local lastR, lastG, lastB = self.R, self.G, self.B
+    
 	if iname == "Red" then
 		self.R = value
 	elseif iname == "Green" then
@@ -115,7 +117,11 @@ function ENT:TriggerInput(iname, value)
     self.ConeEntity:SetKeyValue("spotlightwidth", self.ConeWidth)
     self.ConeEntity:SetKeyValue("rendercolor", string.format("%f %f %f", self.R, self.G, self.B))
     
-    self:RemoveSpotlightEnds() -- Must be done for a change to appear
+    -- If the color changes, we need to toggle the light off and on
+    if lastR != self.R or lastG != self.G or lastB != self.B then
+        self.ConeEntity:Fire("LightOff", "", 0)
+        self.ConeEntity:Fire("LightOn", "", 0.001)
+    end
     
     self:UpdateOutput()
 end
