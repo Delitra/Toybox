@@ -16,7 +16,7 @@
 -- 
 -- $Id$
 
-TOOL.Category		= "Wire - Display"
+TOOL.Category		= "Wire - Render"
 TOOL.Name			= "Light Cone"
 TOOL.Command		= nil
 TOOL.ConfigName		= ""
@@ -26,8 +26,10 @@ if CLIENT then
     language.Add("Tool_wire_light_cone_name", "Light Cone (Wire)")
     language.Add("Tool_wire_light_cone_desc", "Spawns a light cone.")
     language.Add("Tool_wire_light_cone_0", "Primary: Create/Update light cone")
-	language.Add("sboxlimit_wire_light_cones", "Wired light cone limit reached!")
-	language.Add("undone_gmod_wire_light_cone", "Undone Wire Light Cone")
+	language.Add("SBoxLimit_wire_light_cones", "Wired light cone limit reached!")
+	language.Add("Undone_wire_light_cone", "Undone Wire Light Cone")
+	language.Add("Cleanup_wire_light_cones", "Wire Light Cones")
+	language.Add("Cleaned_wire_light_cones", "Cleaned up all Wire Light Cones")
 end
 
 if SERVER then
@@ -75,20 +77,18 @@ function TOOL:LeftClick(trace)
 	ent:SetPos(trace.HitPos - trace.HitNormal * min.z)
 	local const = WireLib.Weld(ent, trace.Entity, trace.PhysicsBone, true)
 	
-	undo.Create("gmod_wire_light_cone")
+	undo.Create("wire_light_cone")
     undo.AddEntity(ent)
     undo.AddEntity(const)
     undo.SetPlayer(ply)
 	undo.Finish()
-	
-	ply:AddCleanup("gmod_wire_light_cones", ent)
 	
 	return true
 end
 
 if SERVER then
 	function MakeWireLightCone(pl, pos, ang, model)
-		if !pl:CheckLimit("gmod_wire_light_cones") then return false end
+		if !pl:CheckLimit("wire_light_cones") then return false end
 
 		local ent = ents.Create("gmod_wire_light_cone")
 		if (!ent:IsValid()) then return false end
@@ -104,7 +104,8 @@ if SERVER then
 			pl = pl,
 		})
 
-		pl:AddCount("gmod_wire_light_cones", ent)
+		pl:AddCount("wire_light_cones", ent)
+		pl:AddCleanup("wire_light_cones", ent)
 
 		return ent
 	end

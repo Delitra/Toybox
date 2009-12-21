@@ -27,8 +27,10 @@ if CLIENT then
     language.Add("Tool_wire_contact_data_link_desc", "Spawns a contact data link.")
     language.Add("Tool_wire_contact_data_link_0", "Primary: Create/Update Contact Data Link")
     language.Add("Wire_contact_data_link_secure_input", "Secure input")
-	language.Add("sboxlimit_wire_contact_data_links", "Contact data link limit reached!")
-	language.Add("undone_gmod_wire_contact_data_link", "Undone Wire Contact Data Link")
+	language.Add("SBoxLimit_wire_contact_data_links", "Contact data link limit reached!")
+	language.Add("Undone_wire_contact_data_link", "Undone Wire Contact Data Link")
+	language.Add("Cleanup_wire_contact_data_links", "Wire Contact Data Links")
+	language.Add("Cleaned_wire_contact_data_links", "Cleaned up all Wire Contact Data Links")
 end
 
 if SERVER then
@@ -94,20 +96,18 @@ function TOOL:LeftClick(trace)
 	ent:SetPos(trace.HitPos - trace.HitNormal * min.z)
 	local const = WireLib.Weld(ent, trace.Entity, trace.PhysicsBone, true)
 	
-	undo.Create("gmod_wire_contact_data_link")
+	undo.Create("wire_contact_data_link")
     undo.AddEntity(ent)
     undo.AddEntity(const)
     undo.SetPlayer(ply)
 	undo.Finish()
-	
-	ply:AddCleanup("gmod_wire_contact_data_links", ent)
 	
 	return true
 end
 
 if SERVER then
 	function MakeWireContactDataLink(pl, pos, ang, model, types, secureInput)
-		if !pl:CheckLimit("gmod_wire_contact_data_links") then return false end
+		if !pl:CheckLimit("wire_contact_data_links") then return false end
 
 		local ent = ents.Create("gmod_wire_contact_data_link")
 		if (!ent:IsValid()) then return false end
@@ -125,7 +125,8 @@ if SERVER then
             SecureInput = secureInput != 0
 		})
 
-		pl:AddCount("gmod_wire_contact_data_links", ent)
+		pl:AddCount("wire_contact_data_links", ent)
+		pl:AddCleanup("wire_contact_data_links", ent)
 
 		return ent
 	end
