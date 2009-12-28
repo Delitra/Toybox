@@ -1,0 +1,110 @@
+@name Montezuma's Wheel Light Control
+@inputs Mode
+@outputs R:vector Y:vector G:vector
+@persist I E:entity LastMode
+
+# Modes
+# 0 - Boarding
+# 1 - Waiting to board
+# 2 - Waiting to run
+# 3 - Running
+# 4 - Paused
+# 5 - Boarding end warning
+# 6 - Collecting to board
+# 800 - Initialization
+
+if (first() | duped()) {
+    timer("Find", 0)
+} elseif (clk("Find")) {
+    E = noentity()
+    Seats = array()
+    Constraints = entity():getConstraints()
+    for (I = 1, Constraints:count()) {
+        if (Constraints[I, entity]:model() == "models/props_c17/traffic_light001a.mdl") {
+            E = Constraints[I, entity]
+            break
+        }
+    }
+    
+    if (!E) {
+        timer("Find", 1000)
+    }
+} else {
+    if (Mode == 0) {
+        stoptimer("Blink")
+        if (LastMode != Mode) {
+            soundStop(1)
+        }
+        
+        R = vec(0, 0, 0)
+        Y = vec(0, 0, 0)
+        G = vec(0, 255, 0)
+    } elseif (Mode == 5) {
+        if (LastMode != Mode) {
+            E:soundPlay(1, 0, "ambient/alarms/train_crossing_bell_loop1.wav")
+        }
+        
+        if (I) {
+            R = vec(255, 255, 0)
+            Y = vec(0, 0, 0)
+            G = vec(0, 0, 0)
+        } else {
+            R = vec(0, 0, 0)
+            Y = vec(255, 255, 0)
+            G = vec(0, 0, 0)
+        }
+        
+        timer("Blink", 500)
+    } elseif (Mode == 1 | Mode == 2) {
+        if (LastMode != Mode) {
+            if (Mode == 1) {
+                E:soundPlay(1, 0, "ambient/alarms/train_crossing_bell_loop1.wav")
+            } else {
+                #soundStop(1)
+            }
+        }
+        
+        if (I) {
+            R = vec(255, 0, 0)
+            Y = vec(0, 0, 0)
+            G = vec(0, 0, 0)
+        } else {
+            R = vec(0, 0, 0)
+            Y = vec(255, 0, 0)
+            G = vec(0, 0, 0)
+        }
+        
+        timer("Blink", 500)
+    } elseif (Mode == 800) {
+        if (LastMode != Mode) {
+            soundStop(1)
+        }
+        
+        if (I) {
+            R = vec(255, 255, 0)
+            Y = vec(255, 0, 0)
+            G = vec(255, 255, 0)
+        } else {
+            R = vec(255, 0, 0)
+            Y = vec(255, 255, 0)
+            G = vec(255, 0, 0)
+        }
+        
+        timer("Blink", 500)
+    } else {
+        if (LastMode != Mode) {
+            if (Mode == 6) {
+                E:soundPlay(1, 0, "ambient/alarms/train_crossing_bell_loop1.wav")
+            } else {
+                soundStop(1)
+            }
+        }
+        
+        R = vec(255, 0, 0)
+        Y = vec(0, 0, 0)
+        G = vec(0, 0, 0)
+    }
+
+    I = !I
+    LastMode = Mode
+}

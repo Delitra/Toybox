@@ -1,0 +1,12 @@
+@name Montezuma's Wheel Music Player
+@inputs Track:string Props:array
+
+if (Track) {
+    for (I = 1, Props:count()) {
+        Props[I, entity]:soundPlay(I, 1000, Track)
+    }
+} else {
+    for (I = 1, Props:count()) {
+        soundStop(I)
+    }
+}

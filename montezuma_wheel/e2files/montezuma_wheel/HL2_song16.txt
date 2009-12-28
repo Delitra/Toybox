@@ -1,0 +1,30 @@
+0	song	music/HL2_song16.mp3
+0	title	Evil Surrounds Us
+0	algorithm	1
+0	diameter	800
+0	height	600
+0	speed	1
+0	trails	50	900	8	trails/plasma	255,0,0	255
+10	speed	2
+12	speed	4
+14	speed	6
+16	speed	8
+33	speed	-6
+42	speed	6
+50	algorithm	0
+50	height	2000
+50	diameter	2000
+54	speed	-4
+58	speed	6
+67	algorithm	1
+50	diameter	6000
+50	height	400
+84	speed	1
+100	speed	-4
+105	speed	-6
+116	speed	-20
+125	height	800
+146	speed	20
+154	speed	6
+161	speed	1
+169.7	end

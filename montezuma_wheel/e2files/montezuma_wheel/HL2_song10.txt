@@ -1,0 +1,11 @@
+0	song	music/HL2_song10.mp3
+0	title	Our Future
+0	algorithm	0
+0	diameter	300
+0	height	20
+0	speed	1
+0	trails	20	150	10	trails/smoke	55,55,55	255
+28	speed	0.8
+29	speed	0.4
+29.4	speed	0
+29.5	end
