@@ -1,0 +1,187 @@
+@name DFS Maze Generator [sk89q]
+@outputs Visited:table Stack:array NoWall:table
+@persist NeededWalls:array PropW PropH
+
+Model = "models/hunter/plates/plate5x6.mdl"
+CW = 8
+CH = 8
+
+if (first() | duped()) {
+    HistoryIndex = 1
+    
+    Exit = vec2(1, 1)
+    Stack:pushVector2(Exit)
+    NoWall[toString(vec(Exit):setZ(0)), number] = 1
+    NoWall[toString(vec(CW, CH + 1, 0):setZ(0)), number] = 1
+    
+    timer("FindModelSize", 0)
+} elseif (clk("FindModelSize")) {
+    E = propSpawn(Model, 1)
+    
+    if (E) {
+        E:propDelete()
+        
+        PropW = E:boxSize():y()
+        PropH = E:boxSize():x()
+
+        runOnTick(1)
+    } else {
+        print("[Maze Gen] Invalid model!")
+    }
+} elseif (clk("Print")) {
+    for (Y = 1, CH) {
+        Line = ""
+        for (X = 1, CW) {
+            if (NoWall[toString(vec(X, Y, 0)), number]) {
+                Line += "+ "
+            } else {
+                Line += "+-"
+            }
+        }
+        print(_HUD_PRINTCONSOLE, Line + "+")
+        
+        Line = ""
+        for (X = 1, CW + 1) {
+            if (X <= CW) {
+                CellSpace = " "
+            } else {
+                CellSpace = ""
+            }
+            
+            if (NoWall[toString(vec(X, Y, 1)), number]) {
+                Line += " " + CellSpace
+            } else {
+                Line += "|" + CellSpace
+            }
+        }
+        print(_HUD_PRINTCONSOLE, Line)
+    }
+    
+    Line = ""
+    for (X = 1, CW) {
+        if (NoWall[toString(vec(X, CH + 1, 0)), number]) {
+            Line += "+ "
+        } else {
+            Line += "+-"
+        }
+    }
+    print(_HUD_PRINTCONSOLE, Line + "+")
+} elseif (clk("Process")) {
+    for (Y = 1, CH) {
+        for (X = 1, CW + 1) {
+            if (X <= CW & !NoWall[toString(vec(X, Y, 0)), number]) {
+                NeededWalls:pushVector(vec(X * PropW + PropW / 2, -Y * PropW, 1))
+            }
+            
+            if (!NoWall[toString(vec(X, Y, 1)), number]) {
+                NeededWalls:pushVector(vec(X * PropW, -Y * PropW - PropW / 2, 0))
+            }
+        }
+    }
+    
+    Y = CH + 1
+    for (X = 1, CW) {
+        if (!NoWall[toString(vec(X, Y, 0)), number]) {
+            NeededWalls:pushVector(vec(X * PropW + PropW / 2, -Y * PropW, 1))
+        }
+    }
+    
+    timer("Spawn", 0)
+} elseif (clk("Spawn")) {
+    Wall = NeededWalls:removeVector(1)
+    
+    Pos = entity():toWorld(Wall:setZ(0)) + PropH / 2
+    Ang = Wall:z() == 0 ? ang(90, 0, 0) : ang(90, 90, 0)
+    E = propSpawn(Model, Pos, Ang, 1)
+    
+    if (NeededWalls:count() > 0) {
+        timer("Spawn", 1000/4)
+    }
+} elseif (tickClk()) {
+    while (Stack:count() > 0) {
+        if (minquota() < 100) {
+            exit()
+        }
+        
+        Cur = Stack:popVector2()
+        StackMem = glonDecode(Stack:popString())
+        Visited[toString(Cur), number] = 1
+        
+        #print(format("%" + toString(Stack:count()) + "s%s", "",
+        #      "Cell: " + toString(Cur)))
+        
+        Neighbors = array()
+        if (Cur:x() != 1) {
+            Neighbors:pushVector2(Cur:setX(Cur:x() - 1))
+        }
+        if (Cur:y() != 1) {
+            Neighbors:pushVector2(Cur:setY(Cur:y() - 1))
+        }
+        if (Cur:x() != CW) {
+            Neighbors:pushVector2(Cur:setX(Cur:x() + 1))
+        }
+        if (Cur:y() != CH) {
+            Neighbors:pushVector2(Cur:setY(Cur:y() + 1))
+        }
+        
+        # Shuffle
+        N = Neighbors:count()
+        while (N > 1) {
+            I = randint(1, N)
+            Temp = Neighbors[N, vector2]
+            Neighbors[N, vector2] = Neighbors[I, vector2]
+            Neighbors[I, vector2] = Temp
+            N--
+        }
+        
+        Num = 0
+        for (I = 1, Neighbors:count()) {
+            Nb = Neighbors[I, vector2]
+            if (Visited[toString(Nb), number] != 1) {
+                Num++
+            }
+        }
+        
+        if (Num > 0) {
+            Stack:pushVector2(Cur)
+            
+            RemovedWall = 0
+            for (I = 1, Neighbors:count()) {
+                Nb = Neighbors[I, vector2]
+                if (Visited[toString(Nb), number] != 1) {
+                    if (!RemovedWall) {
+                        if (Visited[toString(Nb), number] != 1) {
+                            if (Cur:y() == Nb:y()) {
+                                if (Nb:x() < Cur:x()) { # Left of
+                                    NoWall[toString(vec(Cur):setZ(1)), number] = 1
+                                } else { # Right of
+                                    NoWall[toString(vec(Nb):setZ(1)), number] = 1
+                                }
+                            } else {
+                                if (Nb:y() < Cur:y()) { # Above
+                                    NoWall[toString(vec(Cur):setZ(0)), number] = 1
+                                } else { # Below
+                                    NoWall[toString(vec(Nb):setZ(0)), number] = 1
+                                }
+                            }
+                        }
+                        
+                        RemovedWall = 1
+                        
+                        #print(format("%" + toString(Stack:count()) + "s%s", "",
+                        #      "Neighbor: " + toString(Nb)))
+                    
+                        Stack:pushVector2(Nb)
+                    } else {
+                        Stack:insertVector2(Stack:count(), Nb)
+                    }
+                }
+            }
+        }
+    }
+    
+    print("Done!")
+    timer("Print", 0)
+    timer("Process", 0)
+    runOnTick(0)
+}
