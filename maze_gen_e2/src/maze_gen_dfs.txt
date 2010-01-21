@@ -1,3 +1,18 @@
+# DFS Maze Generator
+# Copyright (c) 2010 sk89q <http://www.sk89q.com>
+# Licensed under GPLv3
+#
+# Original file:
+# http://github.com/sk89q/gmod/blob/master/maze_gen_e2/src/maze_gen_dfs.txt
+#
+# This E2 requires PropCore to generate the props.
+#
+# It implements the depth-first search algorithm to generate 2D,
+# perfect, orthogonal mazes. Because DFS is a recursive algorithm and
+# E2 does not support functions, we have to use a stack and backtrack
+# along the "main path."
+#
+
 @name DFS Maze Generator [sk89q]
 @outputs Visited:table Stack:array NoWall:table
 @persist NeededWalls:array Props:array PropW PropH PropL PropAng:angle SY SX
