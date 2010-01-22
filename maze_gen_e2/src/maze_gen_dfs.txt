@@ -12,29 +12,112 @@
 # E2 does not support functions, we have to use a stack and backtrack
 # along the "main path."
 #
+# A mention of the data structures being used is worthy of a mention.
+# Cells can be defined using only two numbers: X and Y, but walls are a bit
+# more complicated. Each cell contains up to 4 walls, and walls are shared
+# between up to two cells, so we need a way to refer to a specific wall
+# without having to keep track of the wall state for two different cells
+# separately.
+#
+# This E2 represents cells as a vector2, where the first number is X, and
+# the second number is Y. For walls, we assign two walls to each cell: the
+# wall directly above, and the wall directly to the left. We store walls as
+# a vector, with the X and Y components referring to the location of
+# the cell that the wall belongs to, with the Z component specifing which
+# wall it is. If the Z component is 0, then that means that it is the wall
+# above the cell, and it's 1 if the wall is to the left of the cell. If we
+# want to get the wall below or the wall to the right, we will then add 1
+# to the Y, or add 1 to the X, respectively, moving one cell below or
+# one cell to the right. For the walls on the very bottom and the very
+# right, we have to go outside the dimensions of the maze in order to
+# specify those walls.
+#
+# This is how the walls for a 1-by-1 maze would be formed. Cells 2, 3, and
+# 4 are outside the maze, and 2 and 3 have one wall each that makes up
+# the right-most and bottom-most walls.
+#  _  
+# |1 |2
+#  _  
+#  3  4
+#
+# The depth-first search algorithm is as follows:
+#   1. Start with a grid of walls.
+#   2. Select one cell in the maze to start branching from. We are using
+#      the cell directly in the middle.
+#   3. Mark the current cell as visited, and build a list of neighbors. 
+#      For each neighbor, starting with a random one:
+#        1. If we haven't visited that neighbor, remove the wall in
+#           between, and then recurse with the neighbor as the current
+#           cell.
+#
+# However, since recursion requires that we have functions, and
+# Expression 2 does not, we have to approach it differently. We will
+# emulate recursion by building a stack of cells that we need to visit.
+#
+# The modified algorithm is as follows:
+#   1. Start with a grid of walls.
+#   2. Select one cell in the maze to start branching from. We are using
+#      the cell directly in the middle. Add this cell to the stack.
+#   3. Pop off the last added cell on the stack, and make this the current
+#      cell. Mark the cell as visited, and build a list of neighbors.
+#
+#      If there are no neighbors that have not been visited:
+#        1. Repeat step #3 if there are any cells left in the stack.
+#
+#      Otherwise, select one neighbor at random that has not been visited,
+#      and proceed to:
+#        1. Put the current cell back onto the end of the stack.
+#        2. Remove the wall in between.
+#        3. Put the neighbor onto the end of the stack.
+#        4. Repeat step #3.
+#
+# To help with visualizing the algorithm, you can set the PrintStack
+# variable below to 1.
+#
 
 @name DFS Maze Generator [sk89q]
 @inputs Regenerate Clear
-@outputs NeededWalls:array Props:array PropW PropH PropL PropAng:angle
+@outputs NeededWalls:array Props:array
+@outputs PropW PropH PropL PropAng:angle PropOffset:vector
 @outputs CW CH SpawnRate Model:string NoWall:table
 @persist Visited:table Stack:array SY SX
-@persist BuildAfterSize ValidModel Debug DrawASCII
+@persist BuildAfterSize ValidModel DestructOnDelete DrawASCII PrintStack
+@persist RandomSpawn
 
 if (first() | duped()) {
     Model = "models/props_wasteland/wood_fence02a.mdl"
     CW = 10
     CH = 10
-    SpawnRate = 100
-    Debug = 1 # Enabling debug will cause the whole maze + E2 to
-              # be deleted upon undo of one prop
+    SpawnRate = 4
+    DestructOnDelete = 0 # Enabling debug will cause the whole maze + E2 to
+                         # be deleted upon undo of one prop
     DrawASCII = 0 # Draw the ASCII map in console
+    GenerateOnLoad = 1 # Generate when the chip is spawned
+    PrintStack = 0 # Prints the cells being processed, as they are
+                   # processed
+    RandomSpawn = 1 # Spawn randomly, rather than by row
     
     ValidModel = 0
-    BuildAfterSize = 1
+    BuildAfterSize = GenerateOnLoad
     
     runOnChat(1)
     runOnLast(1)
     timer("FindModelSize", 0)
+
+} elseif (clk("Build")) {
+    # This is the cell where we start branching paths away from
+    StartCell = vec2(floor(CW / 2), floor(CH / 2))
+    
+    #Entrance = vec2(1, 1)
+    #Entrance = vec2(randint(1, CW), 1)
+    Entrance = vec2(floor(CW / 2), 1)
+    Exit = vec2(randint(1, CW), CH + 1)
+    
+    Stack:pushVector2(StartCell)
+    NoWall[toString(vec(Entrance):setZ(0)), number] = 1
+    NoWall[toString(vec(Exit):setZ(0)), number] = 1
+
+    runOnTick(1)
 
 } elseif (last()) {
     NeededWalls:propDelete()
@@ -43,7 +126,8 @@ if (first() | duped()) {
     Cmd = lastSaid():explode(" ")[1, string]:lower():trim()
     Args = lastSaid():sub(Cmd:length() + 2):trim()
     
-    if (Cmd == "!genmaze" | Cmd == "!mazegen" | Cmd == "!mgcreate") {
+    if (Cmd == "!genmaze" | Cmd == "!mazegen" | Cmd == "!mgcreate" |
+        Cmd == "!mggen") {
         stoptimer("Build")
         stoptimer("Print")
         stoptimer("Process")
@@ -65,7 +149,8 @@ if (first() | duped()) {
             print("[Maze Gen] The selected model is not valid.")
         }
     } elseif (Cmd == "!mgclear" | Cmd == "!mgdel" | Cmd == "!mgdelete" | 
-              Cmd == "!mgrem" | Cmd == "!mgremove" | Cmd == "!mgdestroy") {
+              Cmd == "!mgrem" | Cmd == "!mgremove" | Cmd == "!mgdestroy" | 
+              Cmd == "!mgreset") {
         stoptimer("Build")
         stoptimer("Print")
         stoptimer("Process")
@@ -117,7 +202,6 @@ if (first() | duped()) {
         print("[Maze Gen] The selected model is not valid.")
     }
 
-    
 } elseif (~Clear & Clear) {
     stoptimer("Build")
     stoptimer("Print")
@@ -142,6 +226,7 @@ if (first() | duped()) {
         ValidModel = 1
         
         Size = E:boxSize()
+        PropOffset = -E:boxCenter()
         LargestDim = max(Size:x(), Size:y(), Size:x())
         
         if (E:model():find("models/hunter/plates/")) {
@@ -172,22 +257,6 @@ if (first() | duped()) {
     } else {
         print("[Maze Gen] The selected model is not valid.")
     }
-
-} elseif (clk("Build")) {
-    # This is the cell where we start branching paths away from
-    StartCell = vec2(floor(CW / 2), floor(CH / 2))
-    
-    #Entrance = vec2(1, 1)
-    #Entrance = vec2(randint(1, CW), 1)
-    #Exit = vec2(randint(1, CW), CH + 1)
-    Entrance = vec2(floor(CW / 2), 1)
-    Exit = vec2(floor(CW / 2), CH + 1)
-    
-    Stack:pushVector2(StartCell)
-    NoWall[toString(vec(Entrance):setZ(0)), number] = 1
-    NoWall[toString(vec(Exit):setZ(0)), number] = 1
-
-    runOnTick(1)
 
 } elseif (clk("Print")) {
     for (Y = SY, CH) {
@@ -295,19 +364,23 @@ if (first() | duped()) {
           NeededWalls:count(), floor(ETA / 60), ETA % 60))
     timer("Spawn", 0)
     
-    if (Debug) {
+    if (DestructOnDelete) {
         timer("DetectDeletion", 1000)
     }
 
 } elseif (clk("Spawn")) {
-    #Wall = NeededWalls:removeVector(1)
-    Wall = NeededWalls:removeVector(randint(1, NeededWalls:count()))
+    if (!RandomSpawn) {
+        Wall = NeededWalls:removeVector(1)
+    } else {
+        Wall = NeededWalls:removeVector(randint(1, NeededWalls:count()))
+    }
     
-    Pos = entity():toWorld(Wall:setZ(0)) + PropH / 2
+    Pos = entity():toWorld(Wall:setZ(0) + PropOffset) + PropH / 2
     Ang = (Wall:z() == 0 ? ang(0, 0, 0) : ang(0, 90, 0)) + PropAng
     E = propSpawn(Model, Pos, Ang, 1)
     
     if (E) {
+        #E:parentTo(entity())
         Props:pushEntity(E)
         
         if (NeededWalls:count() > 0) {
@@ -321,15 +394,18 @@ if (first() | duped()) {
 
 } elseif (tickClk()) {
     while (Stack:count() > 0) {
-        if (minquota() < 100) {
+        if (minquota() < 100 | minquota() < ops() * 2) {
             exit()
         }
         
         Cur = Stack:popVector2()
         Visited[toString(Cur), number] = 1
         
-        #print(format("%" + toString(Stack:count()) + "s%s", "",
-        #      "Cell: " + toString(Cur)))
+        if (PrintStack) {
+            print(_HUD_PRINTCONSOLE, 
+                  format("%" + toString(Stack:count()) + "s%s", "",
+                  "Cell: " + toString(Cur)))
+        }
         
         Neighbors = array()
         if (Cur:x() != 1) {
@@ -374,11 +450,6 @@ if (first() | duped()) {
                     }
                 }
                 
-                RemovedWall = 1
-                
-                #print(format("%" + toString(Stack:count()) + "s%s", "",
-                #      "Neighbor: " + toString(Nb)))
-                
                 Stack:pushVector2(Nb)
                 
                 break
@@ -397,5 +468,7 @@ if (first() | duped()) {
         SY = 1, SX = 1
         timer("Process", 0)
     }
+    
     runOnTick(0)
 }
+
