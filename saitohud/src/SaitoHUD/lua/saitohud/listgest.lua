@@ -18,13 +18,14 @@
 
 SaitoHUD.Gesturing = false
 SaitoHUD.RegisteredListGests = {}
+SaitoHUD.RegisteredLeftListGests = {}
 
-local entries = {}
+local menu = {}
 local lastIndex = 0
 
 function StartGesture(ply, cmd, args)
 	SaitoHUD.Gesturing = true
-    entries = GetEntriesList()
+    menu = GetMenu()
     lastIndex = 0
 	gui.EnableScreenClicker(true)
 end
@@ -35,23 +36,26 @@ function EndGesture(ply, cmd, args)
 	gui.EnableScreenClicker(false)
     surface.PlaySound("ui/buttonclickrelease.wav")
     
-    if entries[lastIndex] then
-        if type(entries[lastIndex][2]) == "function" then
-            entries[lastIndex][2](entries[lastIndex][1])
-        elseif type(entries[lastIndex][2]) == "string" then
-            LocalPlayer():ConCommand(entries[lastIndex][2] .. "\n")
+    if menu[lastIndex] then
+        local entry = menu[lastIndex]
+        if type(entry.action) == "function" then
+            entry.action(entry)
+        elseif type(entry.action) == "string" then
+            LocalPlayer():ConCommand(entry.action .. "\n")
         end
     end
 end
 concommand.Add("-listgest", EndGesture)
 
-function GetEntriesList()
-    local entries = {}
+function GetMenu()
+    local menu = {}
     for _, f in pairs(SaitoHUD.RegisteredListGests) do
-        table.Merge(entries, f())
+        table.Merge(menu, f())
     end
-    table.insert(entries, 1, {"Cancel", nil})
-    return entries
+    table.insert(menu, 1, {
+        ["text"] = "Cancel",
+    })
+    return menu
 end
 
 function SaitoHUD.RegisterListGest(f)
@@ -67,28 +71,28 @@ function HUDPaint()
     local mDistance = math.max(math.abs(scY - mY) - 5, 0)
     local index = 1
     if mY > scY then
-        index = math.min(math.floor(mDistance / 15) + 1, table.Count(entries))
+        index = math.min(math.floor(mDistance / 15) + 1, table.Count(menu))
     else
-        index = table.Count(entries) - math.min(math.floor(mDistance / 15), table.Count(entries) - 1)
+        index = 1
+        --index = table.Count(menu) - math.min(math.floor(mDistance / 15), table.Count(menu) - 1)
     end
     if index ~= lastIndex then
         surface.PlaySound("weapons/pistol/pistol_empty.wav")
     end
     lastIndex = index
     
-    for i, entry in pairs(entries) do
-        local text = entry[1]
-        local bgColor = entry[3] and entry[3] or Color(0, 0, 0, 255)
+    for i, entry in pairs(menu) do
+        local bgColor = entry.bgColor and entry.bgColor or Color(0, 0, 0, 255)
         local x, y = offsetX, offsetY + i * 30
         
         surface.SetFont("HudHintTextLarge")
-        local w, h = surface.GetTextSize(text)
+        local w, h = surface.GetTextSize(entry.text)
         draw.RoundedBox(4, x - 3, y - h/2,
                         200 + 3, h + 12,
                         index == i and Color(255, 50, 50, 255) or bgColor)
         surface.SetTextColor(255, 255, 255, 200)
         surface.SetTextPos(x, y)
-        surface.DrawText(text)
+        surface.DrawText(entry.text)
     end
 end
 hook.Add("HUDPaint", "SaitoHUDListGestHUDPaint", HUDPaint)

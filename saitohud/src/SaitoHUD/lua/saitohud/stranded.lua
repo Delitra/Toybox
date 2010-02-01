@@ -181,28 +181,32 @@ local function StrandedListGest(item)
     local ply = LocalPlayer()
     local shootPos = ply:GetShootPos()
     
-    local items = {}
-    
-    local bgColor = Color(84, 58, 39, 255)
+    local menu = {}
     
     -- Drop resources
     for id, num in pairs(Resources) do
         if num > 0 then
             local name = id:gsub("_", " ")
-            local f = function()
-                RunConsoleCommand("say", string.format("!drop %s", id))
-            end
-            table.insert(items, {string.format("Drop %s (%d)", name, num), f, bgColor})
+            table.insert(menu, {
+                ["text"] = string.format("Drop %s (%d)", name, num),
+                ["action"] = function()
+                        RunConsoleCommand("say", string.format("!drop %s", id))
+                    end,
+                ["bgColor"] = Color(84, 58, 39, 255),
+            })
         end
     end
     
     local bgColor = Color(100, 100, 39, 255)
     
     -- Drop weapon
-    local f = function()
-        RunConsoleCommand("say", "!dropweapon")
-    end
-    table.insert(items, {"Drop Weapon", f, bgColor})
+    table.insert(menu, {
+        ["text"] = "Drop Weapon",
+        ["action"] = function()
+                RunConsoleCommand("say", "!dropweapon")
+            end,
+        ["bgColor"] = Color(84, 58, 39, 255),
+    })
     
     local bgColor = Color(49, 84, 39, 255)
 
@@ -213,25 +217,31 @@ local function StrandedListGest(item)
     
     -- Take resources
     local tr = util.TraceLine(data)
-    if tr.Hit and ValidEntity(tr.Entity) and 
-        ply:GetPos():Distance(tr.Entity:LocalToWorld(tr.Entity:OBBCenter())) < 65 then
-        if tr.Entity:GetClass() == "gms_resourcedrop" and tr.Entity.Res then
+    if tr.Hit and ValidEntity(tr.Entity) then 
+        if ply:GetPos():Distance(tr.Entity:LocalToWorld(tr.Entity:OBBCenter())) < 65 and 
+            tr.Entity:GetClass() == "gms_resourcedrop" and tr.Entity.Res then
             local name = tr.Entity.Res:gsub("_", " ")
             local id = name:gsub(" ", "_")
             
             if tr.Entity.Amount > 1 then
-                local f = function()
-                    RunConsoleCommand("say", string.format("!take %s %d", id, tr.Entity.Amount - 1))
-                end
-                table.insert(items, {string.format("Take %s (leave 1)", name), f, bgColor})
+                table.insert(menu, {
+                    ["text"] = string.format("Take %s (leave 1)", name),
+                    ["action"] = function()
+                            RunConsoleCommand("say", string.format("!take %s %d", id, tr.Entity.Amount - 1))
+                        end,
+                    ["bgColor"] = Color(49, 84, 39, 255),
+                })
             end
             
             for _, num in pairs({1, 2, 5, 10, 50, 100}) do
                 if num > tr.Entity.Amount then break end
-                local f = function()
-                    RunConsoleCommand("say", string.format("!take %s %d", id, num))
-                end
-                table.insert(items, {string.format("Take %s (%d/%d)", name, num, tr.Entity.Amount), f, bgColor})
+                table.insert(menu, {
+                    ["text"] = string.format("Take %s (%d/%d)", name, num, tr.Entity.Amount),
+                    ["action"] = function()
+                            RunConsoleCommand("say", string.format("!take %s %d", id, num))
+                        end,
+                    ["bgColor"] = Color(49, 84, 39, 255),
+                })
             end
         end
     end
@@ -240,15 +250,18 @@ local function StrandedListGest(item)
     local foundPlant = false
     for id, cmd in pairs(plantIDs) do
         if Resources[id] and Resources[id] > 0 then
-            local f = function()
-                SaitoHUD.StrandedPlantAnything()
-            end
-            table.insert(items, {"Plant Anything", f, Color(41, 89, 75, 255)})
+            table.insert(menu, {
+                ["text"] = "Plant Anything",
+                ["action"] = function()
+                        SaitoHUD.StrandedPlantAnything()
+                    end,
+                ["bgColor"] = Color(41, 89, 75, 255),
+            })
             break
         end
     end
     
-    return items
+    return menu
 end
 
 local function SetUp()
