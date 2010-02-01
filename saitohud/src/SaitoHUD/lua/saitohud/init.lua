@@ -1,5 +1,5 @@
 -- SaitoHUD
--- Copyright (c) 2009 sk89q <http://www.sk89q.com>
+-- Copyright (c) 2009, 2010 sk89q <http://www.sk89q.com>
 -- 
 -- This program is free software: you can redistribute it and/or modify
 -- it under the terms of the GNU General Public License as published by
@@ -28,8 +28,11 @@ Msg("====== Loading SaitoHUD ======\n")
 
 load("filters") -- Entity filtering engine
 load("base")
+load("listgest")
 load("overlays") -- Entity overlay information
 load("sampling") -- Entity path tracking
-load("hooks") -- Where all the concmds and cvars are
+load("aimtrace")
+load("terrortown") -- Terrortown
+load("stranded")
 
 Msg("==============================\n")

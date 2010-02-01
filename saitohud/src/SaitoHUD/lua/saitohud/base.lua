@@ -1,5 +1,5 @@
 -- SaitoHUD
--- Copyright (c) 2009 sk89q <http://www.sk89q.com>
+-- Copyright (c) 2009, 2010 sk89q <http://www.sk89q.com>
 -- 
 -- This program is free software: you can redistribute it and/or modify
 -- it under the terms of the GNU General Public License as published by
@@ -47,6 +47,28 @@ function SaitoHUD.MatchPlayerString(testName)
     end
 end
 
+function SaitoHUD.ConsoleAutocompletePlayer(cmd, args)
+    local testName = args or ""
+    if testName:len() > 0 then
+        testName = testName:Trim()
+    end
+    local testNameLength = testName:len()
+    local names = {}
+    
+    for _, ply in pairs(player.GetAll()) do
+        local name = ply:GetName()
+        if name:len() >= testNameLength and 
+           name:sub(1, testNameLength):lower() == testName:lower() then
+            if name:find(" ") or name:find("\"") then
+                name = "\"" .. name:gsub("\"", "\\\"") .. "\""
+            end
+            table.insert(names, cmd .. " " .. name)
+        end
+    end
+    
+    return names
+end
+
 function SaitoHUD.GetEntityInfoLines()
     local tr = SaitoHUD.GetRefTrace()
     
@@ -88,4 +110,11 @@ function SaitoHUD.DumpEntityInfo()
             Msg(s .. "\n")
         end
     end
+end
+
+function SaitoHUD.ShowHint(msg, t, c)
+    if not t then t = 10 end
+    if not c then c = NOTIFY_GENERIC end
+    GAMEMODE:AddNotify(msg, c, t);
+	surface.PlaySound("ambient/water/drip" .. math.random(1, 4) .. ".wav")
 end
