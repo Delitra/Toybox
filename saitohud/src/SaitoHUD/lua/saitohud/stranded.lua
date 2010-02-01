@@ -185,6 +185,7 @@ local function StrandedListGest(item)
     
     local bgColor = Color(84, 58, 39, 255)
     
+    -- Drop resources
     for id, num in pairs(Resources) do
         if num > 0 then
             local name = id:gsub("_", " ")
@@ -195,6 +196,14 @@ local function StrandedListGest(item)
         end
     end
     
+    local bgColor = Color(100, 100, 39, 255)
+    
+    -- Drop weapon
+    local f = function()
+        RunConsoleCommand("say", "!dropweapon")
+    end
+    table.insert(items, {"Drop Weapon", f, bgColor})
+    
     local bgColor = Color(49, 84, 39, 255)
 
     local data = {}
@@ -202,6 +211,7 @@ local function StrandedListGest(item)
     data.endpos = shootPos + ply:GetAimVector() * 150
     data.filter = ply
     
+    -- Take resources
     local tr = util.TraceLine(data)
     if tr.Hit and ValidEntity(tr.Entity) and 
         ply:GetPos():Distance(tr.Entity:LocalToWorld(tr.Entity:OBBCenter())) < 65 then
@@ -226,8 +236,8 @@ local function StrandedListGest(item)
         end
     end
     
+    -- Plant
     local foundPlant = false
-    
     for id, cmd in pairs(plantIDs) do
         if Resources[id] and Resources[id] > 0 then
             local f = function()
