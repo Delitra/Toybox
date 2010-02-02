@@ -17,7 +17,7 @@
 -- $Id$
 
 local drawEntityInfo = CreateClientConVar("entity_info", "1", true, false)
-local drawNameTags = CreateClientConVar("name_tags", "1", true, false)
+local drawNameTags = CreateClientConVar("name_tags", "0", true, false)
 local playerBoxes = CreateClientConVar("player_boxes", "0", true, false)
 local playerMarkers = CreateClientConVar("player_markers", "0", true, false)
 
