@@ -49,8 +49,10 @@ concommand.Add("-listgest", EndGesture)
 
 function GetMenu()
     local menu = {}
-    for _, f in pairs(SaitoHUD.RegisteredListGests) do
-        table.Merge(menu, f())
+    for _, lg in pairs(SaitoHUD.RegisteredListGests) do
+        if not lg[2] or table.Count(SaitoHUD.RegisteredListGests) == 1 then
+            table.Merge(menu, lg[1]())
+        end
     end
     table.insert(menu, 1, {
         ["text"] = "Cancel",
@@ -58,8 +60,8 @@ function GetMenu()
     return menu
 end
 
-function SaitoHUD.RegisterListGest(f)
-    table.insert(SaitoHUD.RegisteredListGests, f)
+function SaitoHUD.RegisterListGest(f, showIfEmpty)
+    table.insert(SaitoHUD.RegisteredListGests, {f, showIfEmpty})
 end
 
 function HUDPaint()

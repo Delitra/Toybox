@@ -34,5 +34,7 @@ load("sampling") -- Entity path tracking
 load("aimtrace")
 load("terrortown") -- Terrortown
 load("stranded")
+load("sandbox")
+load("panorama")
 
 Msg("==============================\n")
