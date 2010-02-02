@@ -20,6 +20,7 @@ local useJPEG = CreateClientConVar("pano_jpeg", "0", true, false)
 local ssDelay = CreateClientConVar("pano_ss_delay", "0.1", true, false)
 
 local running = false
+local inPanoView = false
 local startCaptureTime = 0
 local captured = false
 local baseFilePath = nil
@@ -31,18 +32,27 @@ local angleIndex = 1
 local currentAngle = nil
 local paintHooks = {}
 
+local cubicAngles = {
+    Angle(0, 0, 0), Angle(0, 270, 0), Angle(0, 180, 0), 
+    Angle(0, 90, 0), Angle(-90, 0, 0), Angle(90, 0, 0),
+}
+
 local function RemoveHooks()
     local hooks = hook.GetTable().HUDPaint
     for k, f in pairs(hooks) do
         paintHooks[k] = f
         hook.Remove("HUDPaint", k)
+        hook.Add("HUDPaint", k, function() end)
     end
 end
 
 local function RestoreHooks()
     for k, f in pairs(paintHooks) do
-        hook.Add("HUDPaint", k, f)
-        paintHooks[k] = nil
+        if hook.GetTable().HUDPaint[k] then
+            hook.Remove("HUDPaint", k)
+            hook.Add("HUDPaint", k, f)
+            paintHooks[k] = nil
+        end
     end
 end
 
@@ -51,6 +61,14 @@ local function GetBaseFilePath(id, name)
         return name .. "/"
     end
     return id .. "/" .. game.GetMap() .. "_" .. os.date("%Y%m%d%H%M%S") .. "/"
+end
+
+local function EndPano()
+    running = false
+    RestoreHooks()
+    hook.Remove("HUDShouldDraw", "SaitoHUD.Panorama")
+    hook.Remove("HUDPaint", "SaitoHUD.Panorama")
+    hook.Remove("KeyPress", "SaitoHUD.Panorama")
 end
 
 local function DoPanorama()
@@ -62,11 +80,7 @@ local function DoPanorama()
             startCaptureTime = CurTime()
             captured = false
         else
-            running = false
-            RestoreHooks()
-            hook.Remove("HUDShouldDraw", "SaitoHUD.Panorama")
-            hook.Remove("HUDPaint", "SaitoHUD.Panorama")
-            hook.Remove("KeyPress", "SaitoHUD.Panorama")
+            EndPano()
             return
         end
     end
@@ -80,7 +94,7 @@ local function DoPanorama()
     surface.SetTextColor(255, 255, 255, 255)
     surface.SetFont("ScoreboardText")
     surface.SetTextPos(ScrH() + 5, 0)
-    surface.DrawText("Panorama In Progress")
+    surface.DrawText("Panorama in Progress")
     surface.SetTextPos(ScrH() + 5, 15)
     surface.DrawText("TRIM OFF BLACK")
     surface.SetTextPos(ScrH() + 5, 30)
@@ -106,6 +120,53 @@ local function DoPanorama()
     if not captured then
         RunConsoleCommand(useJPEG:GetBool() and "jpeg" or "screenshot", baseFilePath .. name)
         captured = true
+    end
+end
+
+local function DoCubicPanoramaView()
+    local width = ScrW()
+    local height = ScrH()
+    local extendWidth = false
+    
+    if width/height > 3/2 then
+       width = height * 3/2
+       extendWidth = true
+    else
+       height = width * 2/3
+    end
+    
+    local windowWidth = math.floor(width / 3)
+    local windowHeight = windowWidth
+    
+    surface.SetDrawColor(0, 0, 0, 255)
+	surface.DrawRect(0, 0, ScrW(), ScrH())
+    
+    for i, angle in pairs(cubicAngles) do
+        local data = {}
+        data.drawhud = false
+        data.drawviewmodel = false
+        data.fov = 90
+        data.angles = Angle(0, LocalPlayer():EyeAngles().y, 0) + angle
+        data.origin = LocalPlayer():GetShootPos()
+        data.x = (i - 1) % 3 * windowWidth
+        data.y = math.floor((i - 1) / 3) * windowHeight
+        data.w = windowWidth
+        data.h = windowHeight
+        render.RenderView(data)
+    end
+    
+    surface.SetTextColor(255, 255, 255, 255)
+    surface.SetFont("ScoreboardText")
+    if extendWidth then
+        surface.SetTextPos(windowWidth * 3 + 5, 5)
+        surface.DrawText("Panorama View in Progress")
+        surface.SetTextPos(windowWidth * 3 + 5, 20)
+        surface.DrawText("pano_stop in console to end")
+    else
+        surface.SetTextPos(5, windowHeight * 2 + 5)
+        surface.DrawText("Panorama View in Progress")
+        surface.SetTextPos(5, windowHeight * 2 + 5 + 15)
+        surface.DrawText("pano_stop in console to end")
     end
 end
 
@@ -135,22 +196,36 @@ local function PreparePano(id, name)
 end
 
 function SaitoHUD.StopPanorama()
-    if not running then
-        Msg("Panorama routine not running")
-        return
+    if running then
+        EndPano()
+    elseif inPanoView then
+        inPanoView = false
+        hook.Remove("HUDShouldDraw", "SaitoHUD.Panorama")
+        hook.Remove("HUDPaint", "SaitoHUD.Panorama")
+    else
+        Msg("Panorama routine not running\n")
     end
+end
 
-    running = false
-    RestoreHooks()
-    hook.Remove("HUDShouldDraw", "SaitoHUD.Panorama")
-    hook.Remove("HUDPaint", "SaitoHUD.Panorama")
-    hook.Remove("KeyPress", "SaitoHUD.Panorama")
+function SaitoHUD.ShowCubicPanoramaView()
+    if running or inPanoView then
+        Msg("Panorama routine already running\n")
+        return false
+    end
+    
+    inPanoView = true
+    
+    RemoveHooks()
+    hook.Add("HUDShouldDraw", "SaitoHUD.Panorama", function(name) return name == "CHudGMod" end)
+    hook.Add("HUDPaint", "SaitoHUD.Panorama", DoCubicPanoramaView)
+    
+    return true
 end
 
 function SaitoHUD.CreateCubicPanorama(name)
-    if running then
-        Msg("Panorama routine already running")
-        return true
+    if running or inPanoView then
+        Msg("Panorama routine already running\n")
+        return false
     end
     
     angles = {
@@ -167,8 +242,8 @@ function SaitoHUD.CreateCubicPanorama(name)
 end
 
 function SaitoHUD.CreateRectilinearPanorama(degrees, fov, name)
-    if running then
-        Msg("Panorama routine already running")
+    if running or inPanoView then
+        Msg("Panorama routine already running\n")
         return false
     end
     
@@ -186,8 +261,8 @@ function SaitoHUD.CreateRectilinearPanorama(degrees, fov, name)
 end
 
 function SaitoHUD.CreateStitchablePanorama(hDegrees, vDegrees, fov, name)
-    if running then
-        Msg("Panorama routine already running")
+    if running or inPanoView then
+        Msg("Panorama routine already running\n")
         return false
     end
     
@@ -210,6 +285,14 @@ function SaitoHUD.CreateStitchablePanorama(hDegrees, vDegrees, fov, name)
     return true
 end
 
+concommand.Add("pano_cubic_view", function(ply, cmd, args)
+    if not inPanoView then 
+        SaitoHUD.ShowCubicPanoramaView()
+    else
+        SaitoHUD.StopPanorama()
+    end
+end)
+
 concommand.Add("pano_cubic", function(ply, cmd, args)
     local name = (args[1] and args[1]:Trim() ~= "") and args[1] or nil
     SaitoHUD.CreateCubicPanorama(name)
@@ -223,4 +306,8 @@ end)
 concommand.Add("pano_stitchable", function(ply, cmd, args)
     local name = (args[1] and args[1]:Trim() ~= "") and args[1] or nil
     SaitoHUD.CreateStitchablePanorama(nil, nil, nil, name)
+end)
+
+concommand.Add("pano_stop", function(ply, cmd, args)
+    SaitoHUD.StopPanorama()
 end)
