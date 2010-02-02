@@ -16,7 +16,7 @@
 -- 
 -- $Id$
 
-local checkSeeable = CreateClientConVar("stranded_res_seeable", "0", true, false)
+local checkSeeable = CreateClientConVar("stranded_res_seeable", "1", true, false)
 local resDistance = CreateClientConVar("stranded_res_distance", "500", true, false)
 
 local itemColors = {
@@ -80,7 +80,7 @@ local function HUDPaint()
             local tr = util.TraceLine(data)
 
 			if distance <= resDistance:GetFloat() and (not checkSeeable:GetBool() or 
-                util.TraceLine(data).Entity == v) then
+                tr.Entity == v) then
 				local text = (v.Res or "Loading") .. ": " .. tostring(v.Amount or 0)
 				local drawLoc = pos:ToScreen()
 				surface.SetFont("ChatFont")
