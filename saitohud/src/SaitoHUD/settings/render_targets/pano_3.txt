@@ -1,6 +1,0 @@
-"pano_3"
-{
-	"Name"		"pano_3"
-	"Width"		"2048"
-	"Height"	"2048"
-}

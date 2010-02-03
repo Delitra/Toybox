@@ -16,9 +16,14 @@
 -- 
 -- $Id$
 
+require("image")
+
 local useJPEG = CreateClientConVar("pano_jpeg", "0", true, false)
 local prerender = CreateClientConVar("pano_prerender", "0", true, false)
 local ssDelay = CreateClientConVar("pano_ss_delay", "0.1", true, false)
+local useImage = CreateClientConVar("pano_gm_image", "1", true, false)
+
+local numRTScreens = 0
 
 local running = false
 local startCaptureTime = 0
@@ -33,16 +38,19 @@ local currentAngle = nil
 local inPanoView = false
 local panoViewAngles = {}
 local paintHooks = {}
+local lastWeapon = nil
 
 -- We use render targets for prendering
 local rtMat = Material("__pano__")
 local rtTexture = surface.GetTextureID("__pano__")
 local rtScreens = {}
-for i = 1, 8 do
+for i = 1, numRTScreens do
     rtScreens[i] = GetRenderTarget("pano_" .. tostring(i), 2048, 2048, false)
 end
 
 local function RemoveHooks()
+    worldPanelWasVisible = vgui.GetWorldPanel():IsVisible()
+    vgui.GetWorldPanel():SetVisible(false)
     local hooks = hook.GetTable().HUDPaint
     for k, f in pairs(hooks) do
         paintHooks[k] = f
@@ -52,6 +60,7 @@ local function RemoveHooks()
 end
 
 local function RestoreHooks()
+    vgui.GetWorldPanel():SetVisible(worldPanelWasVisible)
     for k, f in pairs(paintHooks) do
         if hook.GetTable().HUDPaint[k] then
             hook.Remove("HUDPaint", k)
@@ -60,6 +69,41 @@ local function RestoreHooks()
         else
             Msg("HUDPaint hook disappeared: " .. k .. "\n")
         end
+    end
+end
+
+local function SwitchAwayFromGrav()
+    if LocalPlayer():GetActiveWeapon() then
+        lastWeapon = LocalPlayer():GetActiveWeapon():GetClass()
+        
+        if LocalPlayer():GetActiveWeapon():GetClass() == "weapon_physgun" then
+            local weapons = LocalPlayer():GetWeapons()
+            if table.Count(weapons) > 1 then
+                local weaponClasses = {}
+                for _, v in pairs(weapons) do
+                    table.insert(weaponClasses, v:GetClass())
+                end
+                if table.HasValue(weaponClasses, "weapon_crowbar") then
+                    RunConsoleCommand("use", "weapon_crowbar")
+                elseif table.HasValue(weaponClasses, "gmod_camera") then
+                    RunConsoleCommand("use", "gmod_camera")
+                elseif table.HasValue(weaponClasses, "gmod_tool") then
+                    RunConsoleCommand("use", "gmod_tool")
+                elseif table.HasValue(weaponClasses, "weapon_physcannon") then
+                    RunConsoleCommand("use", "weapon_physcannon")
+                else
+                    RunConsoleCommand("use", weaponClasses[1])
+                end
+            end
+        end
+    else
+        lastWeapon = nil
+    end
+end
+
+local function RestoreWeapon()
+    if lastWeapon then
+        RunConsoleCommand("use", lastWeapon)
     end
 end
 
@@ -78,6 +122,7 @@ end
 local function EndPanorama()
     running = false
     RestoreHooks()
+    RestoreWeapon()
     hook.Remove("HUDShouldDraw", "SaitoHUD.Panorama")
     hook.Remove("HUDPaint", "SaitoHUD.Panorama")
     hook.Remove("KeyPress", "SaitoHUD.Panorama")
@@ -145,7 +190,42 @@ local function DoPanorama()
     if not captured then
         RunConsoleCommand(useJPEG:GetBool() and "jpeg" or "screenshot", baseFilePath .. name)
         captured = true
+        
+        Msg(string.format("Captured %s -> %s\n", name,
+                          "garrysmod/screenshots/" .. baseFilePath .. name))
     end
+end
+
+local function DoImmediatePanorama()
+    Msg("Rendering all panorama views to image files immediately...\n")
+    
+    for i, current in pairs(angles) do
+        local offsetPos, angle, fov, name = current[1], current[2],
+            current[3], current[4], current[5]
+        
+        render.Clear(0, 0, 0, 255, true)
+        
+        local data = {}
+        data.drawhud = false
+        data.drawviewmodel = false
+        data.fov = fov
+        data.angles = viewAng + angle
+        data.origin = viewPos + offsetPos
+        data.x = 0
+        data.y = 0
+        data.w = ScrH()
+        data.h = ScrH()
+        render.RenderView(data)
+        
+        local im = image.CreateImage(ScrH(), ScrH())
+        im:CopyRT(0, 0, ScrH(), ScrH())
+        im:Save("garrysmod/screenshots/" .. baseFilePath .. name .. ".bmp")
+        
+        Msg(string.format("Rendered %s -> %s\n", name,
+                          "garrysmod/screenshots/" .. baseFilePath .. name))
+    end
+    
+    EndPanorama()
 end
 
 local function StartPanorama(id, name)
@@ -157,48 +237,62 @@ local function StartPanorama(id, name)
     viewAng = Angle(0, LocalPlayer():EyeAngles().y, 0)
     
     angleIndex = 1
-    anglesCount = table.Count(angles)
     currentAngle = angles[angleIndex]
+    anglesCount = table.Count(angles)
     
-    if anglesCount <= 8 and prerender:GetBool() then
-        -- We can render all of them to render targets instantly
-        Msg("Rendering all panorama views simultaneously...\n")
-        chat.AddText(Color(255, 255, 0, 255), "Pre-rendering panorama views. Your game may freeze momentarily.")
-        
-        for i, current in pairs(angles) do
-            local offsetPos, angle, fov, name = current[1], current[2],
-                current[3], current[4], current[5]
-                
-            local oldRT = render.GetRenderTarget()
-            render.SetRenderTarget(rtScreens[i])
-            render.Clear(0, 0, 0, 255, true)
-            local data = {}
-            data.drawhud = false
-            data.drawviewmodel = false
-            data.fov = fov
-            data.angles = viewAng + angle
-            data.origin = viewPos + offsetPos
-            data.x = 0
-            data.y = 0
-            data.w = ScrH()
-            data.h = ScrH()
-            render.RenderView(data)
-            render.SetRenderTarget(oldRT)
-            
-            table.insert(current, rtScreens[i])
-            
-            Msg(string.format("Pre-rendered %s -> %d\n", name, i))
-        end
-    else
-        Msg("Not pre-renderingg panaroma views\n")
-    end
-    
-    RemoveHooks()
-    hook.Add("HUDShouldDraw", "SaitoHUD.Panorama", function(name) return name == "CHudGMod" end)
-    hook.Add("HUDPaint", "SaitoHUD.Panorama", DoPanorama)
-    hook.Add("KeyPress", "SaitoHUD.Panorama", KeyPress)
-    
+    Msg(string.format("%d panorama views to render\n", anglesCount))
     Msg("Panorama output folder: " .. baseFilePath .. "\n")
+    
+    if useImage:GetBool() and image then
+        SwitchAwayFromGrav()
+        RemoveHooks()
+        hook.Add("HUDShouldDraw", "SaitoHUD.Panorama", function(name) return name == "CHudGMod" end)
+        
+        -- We need to create the folder
+        RunConsoleCommand(useJPEG:GetBool() and "jpeg" or "screenshot", baseFilePath .. "screen")
+        
+        timer.Simple(ssDelay:GetFloat(), DoImmediatePanorama)
+    else
+        if anglesCount <= numRTScreens and prerender:GetBool() then
+            -- We can render all of them to render targets instantly
+            Msg("Rendering all panorama views simultaneously...\n")
+            chat.AddText(Color(255, 255, 0, 255), "Pre-rendering panorama views. Your game may freeze momentarily.")
+            
+            for i, current in pairs(angles) do
+                local offsetPos, angle, fov, name = current[1], current[2],
+                    current[3], current[4], current[5]
+                
+                
+                local oldRT = render.GetRenderTarget()
+                render.SetRenderTarget(rtScreens[i])
+                render.Clear(0, 0, 0, 255, true)
+                local data = {}
+                data.drawhud = false
+                data.drawviewmodel = false
+                data.fov = fov
+                data.angles = viewAng + angle
+                data.origin = viewPos + offsetPos
+                data.x = 0
+                data.y = 0
+                data.w = ScrH()
+                data.h = ScrH()
+                render.RenderView(data)
+                render.SetRenderTarget(oldRT)
+                
+                table.insert(current, rtScreens[i])
+                
+                Msg(string.format("Pre-rendered %s -> %d\n", name, i))
+            end
+        else
+            Msg("Not pre-renderingg panaroma views\n")
+        end
+        
+        SwitchAwayFromGrav()
+        RemoveHooks()
+        hook.Add("HUDShouldDraw", "SaitoHUD.Panorama", function(name) return name == "CHudGMod" end)
+        hook.Add("HUDPaint", "SaitoHUD.Panorama", DoPanorama)
+        hook.Add("KeyPress", "SaitoHUD.Panorama", KeyPress)
+    end
 end
 
 local function DoPanoramaView()
@@ -253,6 +347,7 @@ local function StartPanoramaView(angles)
     
     inPanoView = true
     
+    SwitchAwayFromGrav()
     RemoveHooks()
     hook.Add("HUDShouldDraw", "SaitoHUD.Panorama", function(name) return name == "CHudGMod" end)
     hook.Add("HUDPaint", "SaitoHUD.Panorama", DoPanoramaView)
@@ -261,6 +356,7 @@ end
 local function EndPanoramaView()
     inPanoView = false
     RestoreHooks()
+    RestoreWeapon()
     hook.Remove("HUDShouldDraw", "SaitoHUD.Panorama")
     hook.Remove("HUDPaint", "SaitoHUD.Panorama")
 end
@@ -284,6 +380,20 @@ function SaitoHUD.ShowCubicPanoramaView()
     StartPanoramaView({
         Angle(0, 0, 0), Angle(0, 270, 0), Angle(0, 180, 0), 
         Angle(0, 90, 0), Angle(-90, 0, 0), Angle(90, 0, 0),
+    })
+    
+    return true
+end
+
+function SaitoHUD.ShowAltCubicPanoramaView()
+    if running or inPanoView then
+        Msg("Panorama routine already running\n")
+        return false
+    end
+    
+    StartPanoramaView({
+        Angle(0, 90, 0), Angle(0, 0, 0), Angle(0, 270, 0),
+        Angle(0, 180, 0), Angle(-90, 0, 0), Angle(90, 0, 0),
     })
     
     return true
@@ -355,6 +465,14 @@ end
 concommand.Add("pano_cubic_view", function(ply, cmd, args)
     if not inPanoView then 
         SaitoHUD.ShowCubicPanoramaView()
+    else
+        EndPanoramaView()
+    end
+end)
+
+concommand.Add("pano_alt_cubic_view", function(ply, cmd, args)
+    if not inPanoView then 
+        SaitoHUD.ShowAltCubicPanoramaView()
     else
         EndPanoramaView()
     end
