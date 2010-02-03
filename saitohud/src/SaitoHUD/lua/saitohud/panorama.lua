@@ -73,7 +73,7 @@ local function RestoreHooks()
 end
 
 local function SwitchAwayFromGrav()
-    if LocalPlayer():GetActiveWeapon() then
+    if ValidEntity(LocalPlayer():GetActiveWeapon()) then
         lastWeapon = LocalPlayer():GetActiveWeapon():GetClass()
         
         if LocalPlayer():GetActiveWeapon():GetClass() == "weapon_physgun" then
