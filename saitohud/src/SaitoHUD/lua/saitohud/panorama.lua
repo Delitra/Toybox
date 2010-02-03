@@ -17,10 +17,10 @@
 -- $Id$
 
 local useJPEG = CreateClientConVar("pano_jpeg", "0", true, false)
+local prerender = CreateClientConVar("pano_prerender", "0", true, false)
 local ssDelay = CreateClientConVar("pano_ss_delay", "0.1", true, false)
 
 local running = false
-local inPanoView = false
 local startCaptureTime = 0
 local captured = false
 local baseFilePath = nil
@@ -30,12 +30,17 @@ local angles = {}
 local anglesCount = 0
 local angleIndex = 1
 local currentAngle = nil
+local inPanoView = false
+local panoViewAngles = {}
 local paintHooks = {}
 
-local cubicAngles = {
-    Angle(0, 0, 0), Angle(0, 270, 0), Angle(0, 180, 0), 
-    Angle(0, 90, 0), Angle(-90, 0, 0), Angle(90, 0, 0),
-}
+-- We use render targets for prendering
+local rtMat = Material("__pano__")
+local rtTexture = surface.GetTextureID("__pano__")
+local rtScreens = {}
+for i = 1, 8 do
+    rtScreens[i] = GetRenderTarget("pano_" .. tostring(i), 2048, 2048, false)
+end
 
 local function RemoveHooks()
     local hooks = hook.GetTable().HUDPaint
@@ -63,7 +68,12 @@ local function GetBaseFilePath(id, name)
     return id .. "/" .. game.GetMap() .. "_" .. os.date("%Y%m%d%H%M%S") .. "/"
 end
 
-local function EndPano()
+local function KeyPress()
+    SaitoHUD.ShowHint("Panorama aborted (you pressed a button).")
+    SaitoHUD.StopPanorama()
+end
+
+local function EndPanorama()
     running = false
     RestoreHooks()
     hook.Remove("HUDShouldDraw", "SaitoHUD.Panorama")
@@ -80,16 +90,41 @@ local function DoPanorama()
             startCaptureTime = CurTime()
             captured = false
         else
-            EndPano()
+            EndPanorama()
             return
         end
     end
     
-    local offsetPos, angle, fov, name = currentAngle[1], currentAngle[2],
-        currentAngle[3], currentAngle[4], currentAngle[5]
+    local offsetPos, angle, fov, name, rt = currentAngle[1], currentAngle[2],
+        currentAngle[3], currentAngle[4], currentAngle[5], currentAngle[6]
     
     surface.SetDrawColor(0, 0, 0, 255)
 	surface.DrawRect(0, 0, ScrW(), ScrH())
+    
+    if rt then
+        local old = rtMat:GetMaterialTexture("$basetexture")
+        rtMat:SetMaterialTexture("$basetexture", rt)
+        surface.SetTexture(rtTexture)
+        surface.DrawPoly({
+            {x = 0, y = 0, u = 0, v = 0},
+            {x = 2048, y = 0, u = 1, v = 0},
+            {x = 2048, y = 2048, u = 1, v = 1},
+            {x = 0, y = 2048, u = 0, v = 1}
+        })
+        rtMat:SetMaterialTexture("$basetexture", old)
+    else
+        local data = {}
+        data.drawhud = false
+        data.drawviewmodel = false
+        data.fov = fov
+        data.angles = viewAng + angle
+        data.origin = viewPos + offsetPos
+        data.x = 0
+        data.y = 0
+        data.w = ScrH()
+        data.h = ScrH()
+        render.RenderView(data)
+    end
     
     surface.SetTextColor(255, 255, 255, 255)
     surface.SetFont("ScoreboardText")
@@ -105,25 +140,76 @@ local function DoPanorama()
     surface.SetTextPos(ScrH() + 5, 60)
     surface.DrawText("Loc: " .. baseFilePath)
     
-    local data = {}
-    data.drawhud = false
-    data.drawviewmodel = false
-    data.fov = fov
-    data.angles = viewAng + angle
-    data.origin = viewPos + offsetPos
-    data.x = 0
-    data.y = 0
-    data.w = ScrH()
-    data.h = ScrH()
-    render.RenderView(data)
-    
     if not captured then
         RunConsoleCommand(useJPEG:GetBool() and "jpeg" or "screenshot", baseFilePath .. name)
         captured = true
     end
 end
 
-local function DoCubicPanoramaView()
+local function StartPanorama(id, name)
+    running = true
+    startCaptureTime = CurTime()
+    captured = false
+    baseFilePath = GetBaseFilePath(id, name)
+    viewPos = LocalPlayer():GetShootPos()
+    viewAng = Angle(0, LocalPlayer():EyeAngles().y, 0)
+    
+    angleIndex = 1
+    anglesCount = table.Count(angles)
+    currentAngle = angles[angleIndex]
+    
+    if anglesCount <= 8 and prerender:GetBool() then
+        -- We can render all of them to render targets instantly
+        Msg("Rendering all panorama views simultaneously...\n")
+        chat.AddText(Color(255, 255, 0, 255), "Pre-rendering panorama views. Your game may freeze momentarily.")
+        
+        for i, current in pairs(angles) do
+            local offsetPos, angle, fov, name = current[1], current[2],
+                current[3], current[4], current[5]
+                
+            local oldRT = render.GetRenderTarget()
+            render.SetRenderTarget(rtScreens[i])
+            render.Clear(0, 0, 0, 255, true)
+            local data = {}
+            data.drawhud = false
+            data.drawviewmodel = false
+            data.fov = fov
+            data.angles = viewAng + angle
+            data.origin = viewPos + offsetPos
+            data.x = 0
+            data.y = 0
+            data.w = ScrH()
+            data.h = ScrH()
+            render.RenderView(data)
+            render.SetRenderTarget(oldRT)
+            
+            table.insert(current, rtScreens[i])
+            
+            Msg(string.format("Pre-rendered %s -> %d\n", name, i))
+        end
+    else
+        Msg("Not pre-renderingg panaroma views\n")
+    end
+    
+    RemoveHooks()
+    hook.Add("HUDShouldDraw", "SaitoHUD.Panorama", function(name) return name == "CHudGMod" end)
+    hook.Add("HUDPaint", "SaitoHUD.Panorama", DoPanorama)
+    hook.Add("KeyPress", "SaitoHUD.Panorama", KeyPress)
+    
+    Msg("Panorama output folder: " .. baseFilePath .. "\n")
+end
+
+local function StartPanoramaView(angles)
+    panoViewAngles = angles
+    
+    inPanoView = true
+    
+    RemoveHooks()
+    hook.Add("HUDShouldDraw", "SaitoHUD.Panorama", function(name) return name == "CHudGMod" end)
+    hook.Add("HUDPaint", "SaitoHUD.Panorama", DoCubicPanoramaView)
+end
+
+local function DoPanoramaView()
     local width = ScrW()
     local height = ScrH()
     local extendWidth = false
@@ -141,7 +227,7 @@ local function DoCubicPanoramaView()
     surface.SetDrawColor(0, 0, 0, 255)
 	surface.DrawRect(0, 0, ScrW(), ScrH())
     
-    for i, angle in pairs(cubicAngles) do
+    for i, angle in pairs(panoViewAngles) do
         local data = {}
         data.drawhud = false
         data.drawviewmodel = false
@@ -170,38 +256,17 @@ local function DoCubicPanoramaView()
     end
 end
 
-local function KeyPress()
-    SaitoHUD.ShowHint("Panorama aborted (you pressed a button).")
-    SaitoHUD.StopPanorama()
-end
-
-local function PreparePano(id, name)
-    running = true
-    startCaptureTime = CurTime()
-    captured = false
-    baseFilePath = GetBaseFilePath(id, name)
-    viewPos = LocalPlayer():GetShootPos()
-    viewAng = Angle(0, LocalPlayer():EyeAngles().y, 0)
-    
-    angleIndex = 1
-    anglesCount = table.Count(angles)
-    currentAngle = angles[angleIndex]
-    
-    RemoveHooks()
-    hook.Add("HUDShouldDraw", "SaitoHUD.Panorama", function(name) return name == "CHudGMod" end)
-    hook.Add("HUDPaint", "SaitoHUD.Panorama", DoPanorama)
-    hook.Add("KeyPress", "SaitoHUD.Panorama", KeyPress)
-    
-    Msg("Panorama output folder: " .. baseFilePath .. "\n")
+local function EndPanoramaView()
+    inPanoView = false
+    hook.Remove("HUDShouldDraw", "SaitoHUD.Panorama")
+    hook.Remove("HUDPaint", "SaitoHUD.Panorama")
 end
 
 function SaitoHUD.StopPanorama()
     if running then
-        EndPano()
+        EndPanorama()
     elseif inPanoView then
-        inPanoView = false
-        hook.Remove("HUDShouldDraw", "SaitoHUD.Panorama")
-        hook.Remove("HUDPaint", "SaitoHUD.Panorama")
+        EndPanoramaView()
     else
         Msg("Panorama routine not running\n")
     end
@@ -213,11 +278,10 @@ function SaitoHUD.ShowCubicPanoramaView()
         return false
     end
     
-    inPanoView = true
-    
-    RemoveHooks()
-    hook.Add("HUDShouldDraw", "SaitoHUD.Panorama", function(name) return name == "CHudGMod" end)
-    hook.Add("HUDPaint", "SaitoHUD.Panorama", DoCubicPanoramaView)
+    StartPanoramaView({
+        Angle(0, 0, 0), Angle(0, 270, 0), Angle(0, 180, 0), 
+        Angle(0, 90, 0), Angle(-90, 0, 0), Angle(90, 0, 0),
+    })
     
     return true
 end
@@ -237,7 +301,7 @@ function SaitoHUD.CreateCubicPanorama(name)
         {Vector(0, 0, 0), Angle(-90, 0, 0), 90, "up"},
     }
     
-    PreparePano("cubic", name)
+    StartPanorama("cubic", name)
     return true
 end
 
@@ -256,7 +320,7 @@ function SaitoHUD.CreateRectilinearPanorama(degrees, fov, name)
         table.insert(angles, {Vector(0, 0, 0), Angle(0, i, 0), fov, tostring(i)})
     end
     
-    PreparePano("rectilinear", name)
+    StartPanorama("rectilinear", name)
     return true
 end
 
@@ -281,7 +345,7 @@ function SaitoHUD.CreateStitchablePanorama(hDegrees, vDegrees, fov, name)
     table.insert(angles, {Vector(0, 0, 0), Angle(-90, 0, 0), 110, "up"})
     table.insert(angles, {Vector(0, 0, 0), Angle(90, 0, 0), 110, "down"})
     
-    PreparePano("stitchable", name)
+    StartPanorama("stitchable", name)
     return true
 end
 

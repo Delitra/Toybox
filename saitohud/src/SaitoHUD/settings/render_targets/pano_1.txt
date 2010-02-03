@@ -1,0 +1,6 @@
+"pano_1"
+{
+	"Name"		"pano_1"
+	"Width"		"2048"
+	"Height"	"2048"
+}
