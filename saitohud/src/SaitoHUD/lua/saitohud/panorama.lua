@@ -57,6 +57,8 @@ local function RestoreHooks()
             hook.Remove("HUDPaint", k)
             hook.Add("HUDPaint", k, f)
             paintHooks[k] = nil
+        else
+            Msg("HUDPaint hook disappeared: " .. k .. "\n")
         end
     end
 end
@@ -199,16 +201,6 @@ local function StartPanorama(id, name)
     Msg("Panorama output folder: " .. baseFilePath .. "\n")
 end
 
-local function StartPanoramaView(angles)
-    panoViewAngles = angles
-    
-    inPanoView = true
-    
-    RemoveHooks()
-    hook.Add("HUDShouldDraw", "SaitoHUD.Panorama", function(name) return name == "CHudGMod" end)
-    hook.Add("HUDPaint", "SaitoHUD.Panorama", DoCubicPanoramaView)
-end
-
 local function DoPanoramaView()
     local width = ScrW()
     local height = ScrH()
@@ -256,8 +248,19 @@ local function DoPanoramaView()
     end
 end
 
+local function StartPanoramaView(angles)
+    panoViewAngles = angles
+    
+    inPanoView = true
+    
+    RemoveHooks()
+    hook.Add("HUDShouldDraw", "SaitoHUD.Panorama", function(name) return name == "CHudGMod" end)
+    hook.Add("HUDPaint", "SaitoHUD.Panorama", DoPanoramaView)
+end
+
 local function EndPanoramaView()
     inPanoView = false
+    RestoreHooks()
     hook.Remove("HUDShouldDraw", "SaitoHUD.Panorama")
     hook.Remove("HUDPaint", "SaitoHUD.Panorama")
 end
@@ -353,7 +356,7 @@ concommand.Add("pano_cubic_view", function(ply, cmd, args)
     if not inPanoView then 
         SaitoHUD.ShowCubicPanoramaView()
     else
-        SaitoHUD.StopPanorama()
+        EndPanoramaView()
     end
 end)
 
