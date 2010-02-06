@@ -1,4 +1,4 @@
-# DFS Maze Generator
+# DFS Maze Generator v1.2
 # Copyright (c) 2010 sk89q <http://www.sk89q.com>
 # Licensed under GPLv3
 #
@@ -12,13 +12,6 @@
 # E2 does not support functions, we have to use a stack and backtrack
 # along the "main path."
 #
-# A mention of the data structures being used is worthy of a mention.
-# Cells can be defined using only two numbers: X and Y, but walls are a bit
-# more complicated. Each cell contains up to 4 walls, and walls are shared
-# between up to two cells, so we need a way to refer to a specific wall
-# without having to keep track of the wall state for two different cells
-# separately.
-#
 # This E2 represents cells as a vector2, where the first number is X, and
 # the second number is Y. For walls, we assign two walls to each cell: the
 # wall directly above, and the wall directly to the left. We store walls as
@@ -31,6 +24,13 @@
 # one cell to the right. For the walls on the very bottom and the very
 # right, we have to go outside the dimensions of the maze in order to
 # specify those walls.
+#
+# A mention of the data structures being used is worthy of a mention.
+# Cells can be defined using only two numbers: X and Y, but walls are a bit
+# more complicated. Each cell contains up to 4 walls, and walls are shared
+# between up to two cells, so we need a way to refer to a specific wall
+# without having to keep track of the wall state for two different cells
+# separately.
 #
 # This is how the walls for a 1-by-1 maze would be formed. Cells 2, 3, and
 # 4 are outside the maze, and 2 and 3 have one wall each that makes up
@@ -75,7 +75,7 @@
 # variable below to 1.
 #
 
-@name DFS Maze Generator [sk89q]
+@name DFS Maze Generator v1.2 [sk89q]
 @inputs Regenerate Clear
 @outputs NeededWalls:array Props:array
 @outputs PropW PropH PropL PropAng:angle PropOffset:vector
@@ -85,23 +85,27 @@
 @persist RandomSpawn
 
 if (first() | duped()) {
-    Model = "models/props_wasteland/wood_fence02a.mdl"
+    Model = "models/props_lab/blastdoor001b.mdl"
     CW = 10
     CH = 10
     SpawnRate = 4
-    DestructOnDelete = 0 # Enabling debug will cause the whole maze + E2 to
-                         # be deleted upon undo of one prop
-    DrawASCII = 0 # Draw the ASCII map in console
-    GenerateOnLoad = 1 # Generate when the chip is spawned
+    DestructOnDelete = 1 # Will cause the whole maze and E2 to be deleted upon 
+                         # removal/undo of any single prop
+    DestructOnE2Removal = 1 # Will cause the whole maze and E2 to be deleted upon 
+                            # removal of the E2
+    DrawASCII = 0 # Draw the ASCII map in console (don;t use for large mazes)
+    GenerateOnLoad = 1 # Generate a maze when the chip is spawned
     PrintStack = 0 # Prints the cells being processed, as they are
                    # processed
-    RandomSpawn = 1 # Spawn randomly, rather than by row
+    RandomSpawn = 1 # Spawn props randomly, rather than by row
     
     ValidModel = 0
     BuildAfterSize = GenerateOnLoad
     
     runOnChat(1)
-    runOnLast(1)
+    if (DestructOnE2Removal) {
+        runOnLast(1)
+    }
     timer("FindModelSize", 0)
 
 } elseif (clk("Build")) {
@@ -120,7 +124,7 @@ if (first() | duped()) {
     runOnTick(1)
 
 } elseif (last()) {
-    NeededWalls:propDelete()
+    Props:propDelete()
 
 } elseif (chatClk(owner())) {
     Cmd = lastSaid():explode(" ")[1, string]:lower():trim()
@@ -471,4 +475,3 @@ if (first() | duped()) {
     
     runOnTick(0)
 }
-
