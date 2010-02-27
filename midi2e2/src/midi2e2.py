@@ -44,18 +44,19 @@ def main():
     print >>sys.stderr, "Copyright (C) 2008-2009 sk89q <http://sk89q.therisenrealm.com>"
     print >>sys.stderr, ""
     
-    parser = OptionParser("%prog [options] MIDIFILE")
-    parser.add_option("--hex-dump", dest="hex_dump", help="output a hex dump", action="store_true")
-    parser.add_option("-f", "--format", dest="format", help="format", metavar="FMT")
-    parser.add_option("-t", "--tracks", dest="tracks", help="use these tracks, starting from 1, delimited by commas or spaces", metavar="TRACKS")
-    parser.add_option("-b", "--tempo", dest="tempo", help="override BPM", metavar="BPM")
-    parser.add_option("--lower-freq", dest="lower_freq", help="lower frequency", metavar="FREQ", default=0)
-    parser.add_option("--upper-freq", dest="upper_freq", help="upper frequency", metavar="FREQ", default=4972)
-    parser.add_option("--max-length", dest="max_length", help="maximum time for song in ms", metavar="TIME", default=0)
+    parser = OptionParser("%prog [options] midifile")
+    parser.add_option("--hex-dump", dest="hex_dump", help="output a hex dump of the output file", action="store_true")
+    parser.add_option("-o", "--output", dest="output", help="output file path", metavar="path", default=None)
+    parser.add_option("-f", "--format", dest="format", help="format to export", metavar="format")
+    parser.add_option("-t", "--tracks", dest="tracks", help="use these tracks, starting from 1, delimited by commas or spaces", metavar="tracks")
+    parser.add_option("-b", "--tempo", dest="tempo", help="override BPM", metavar="bpm")
+    parser.add_option("--lower-freq", dest="lower_freq", help="lower frequency", metavar="freq", default=0)
+    parser.add_option("--upper-freq", dest="upper_freq", help="upper frequency", metavar="freq", default=4972)
+    parser.add_option("--max-length", dest="max_length", help="maximum time for song in ms", metavar="time", default=0)
     (options, args) = parser.parse_args()
     
     # Parse arguments
-    if len(args) == 0: parser.error("Missing required argument: MIDIFILE")
+    if len(args) == 0: parser.error("Missing required argument: midifile")
     elif len(args) > 1: parser.error("Too many arguments")
     midi_file = args[0]
 
@@ -100,14 +101,23 @@ def main():
         buffer = StringIO.StringIO()
         writer = fmt_cls(data, buffer)
         writer.write()
-        
-        if options.hex_dump:
-            print(hexdump(buffer.getvalue()))
-        else:
-            print(buffer.getvalue())
     except IOError, e:
         print >>sys.stderr, "error: Failed to read MIDI file: %s" % e
         sys.exit(3)
+    
+    if options.hex_dump:
+        print(hexdump(buffer.getvalue()))
+    else:
+        if options.output:
+            try:
+                f = open(options.output, "wb")
+                f.write(buffer.getvalue())
+                f.close()
+            except IOError, e:
+                print >>sys.stderr, "error: Failed to write output file: %s" % e
+                sys.exit(4)
+        else:
+            print(buffer.getvalue())
 
 if __name__ == "__main__":
     main()
