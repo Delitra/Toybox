@@ -1,8 +1,0 @@
-"AddonInfo"
-{
-	"name"			"SaitoHUD"
-	"author_name"	"sk89q"
-	"author_url"	"http://www.sk89q.com"
-	"info"			"Multi-function HUD and client side addon"
-	"override"		"0"
-}
