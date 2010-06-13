@@ -1,0 +1,292 @@
+# Licensed under GPLv3
+# You are required to give out any changes on request
+
+@name Blackjack [sk89q]
+@inputs S:wirelink
+@outputs BetAmount PlayerHand Seated:entity LastActivityTime PayoutRatio MaxBet
+@persist DealerHand Deck:array SayChat DealerHandThreshold
+
+if (first() | dupefinished() | ~S) {
+    PayoutRatio = 3
+    MaxBet = 100000
+    SayChat = 0
+    DealerHandThreshold = 17
+    
+#ifdef wirelink:egpDraw()
+    if (S) {
+        S:egpBox(1, vec2(0, 0), vec2(600, 600), vec4(33, 86, 66, 255))
+        S:egpText(2, "Winners' Blackjack", vec2(10, 20), vec4(203, 236, 119, 255))
+        S:egpFont(2, "Trebuchet", 70)
+        S:egpCircle(3, vec2(50, 140), vec2(40, 40), vec4(15, 33, 83, 255))
+        S:egpCircle(4, vec2(65, 154), vec2(40, 40), vec4(255, 255, 255, 255))
+        S:egpCircle(5, vec2(43, 172), vec2(40, 40), vec4(100, 0, 0, 255))
+        S:egpTextLayout(6, "Ready for a player! Type in chat: blackjack #### with the # of credits to bet! PAYOUT: " + toString(PayoutRatio) + ":1",
+                        vec2(110, 110), vec2(390, 200), vec4(255, 255, 255, 255))
+        S:egpFont(6, "Arial", 37)
+        S:egpBoxOutline(7, vec2(30, 300), vec2(512 - 60, 120))
+        S:egpColor(7, vec4(203, 236, 119, 255))
+        S:egpTextLayout(8, "AWESOME\nPAYOUT: " + toString(PayoutRatio) + ":1", vec2(30, 310),
+                       vec2(512 - 60, 130), vec4(203, 236, 119, 255))
+        S:egpTextAlign(8, 1, 0)
+        S:egpFont(8, "Arial", 50)
+        if (owner():steamID() == "STEAM_0:0:18227298") {
+            S:egpTextLayout(9, "All transactions are logged. On server crash, note date, bet amount, and talk to sk89q.",
+                            vec2(20, 440), vec2(512 - 20, 100), vec4(255, 255, 255, 10))
+        } else {
+            S:egpTextLayout(9, "Blackjack game code by sk89q. This game is run by " + owner():name() + ".",
+                            vec2(20, 440), vec2(512 - 20, 100), vec4(255, 255, 255, 10))
+        }
+        S:egpDraw()
+    }
+#else
+    SayChat = 1
+#endif
+    
+    if (first() | dupefinished()) {
+        concmd(format("lf_log [%s] %q", entity():id(), "BJ is ready"))
+        
+        runOnChat(1)
+        runOnLast(1)
+    }
+} elseif (last()) {
+    if (removing()) {
+        concmd(format("lf_log [%s] %q", entity():id(), "BJ is being removed"))
+    } else {
+        concmd(format("lf_log [%s] %q", entity():id(), "BJ is being reloaded"))
+    }
+    
+    if (Seated & BetAmount > 0) {
+        Seated:giveCredits(BetAmount)
+        concmd(format("lf_log [%s] %q", entity():id(),
+               format("BJ: Giving back bet amount of %f to %s (%s)",
+                      BetAmount, Seated:name(), Seated:steamID())))
+    }
+} elseif (chatClk()) {
+    Cmd = lastSaid():explode(" ")[1, string]:lower():trim()
+    Args = lastSaid():sub(Cmd:length() + 2):trim()
+    
+    if (lastSpoke():pos():distance(entity():pos()) > 600) {
+        exit()
+    }
+    
+    if (Cmd == "blackjack") {
+        if (Seated & curtime() - LastActivityTime < 120) {
+            if (Seated == lastSpoke()) {
+                concmd("say [BJ] You are already seated!")
+            } else {
+                concmd("say [BJ] Someone is already seated!")
+            }
+        } else {
+            if (Seated) {
+                concmd(format("lf_log [%s] %q", entity():id(),
+                       "BJ: Kicked out last player due to inactivity"))
+                Seated = noentity()
+            }
+            
+            Amt = floor(Args:toNumber())
+            if (Amt > MaxBet) {
+                concmd("say [BJ] Bets allowed only up to " + toString(MaxBet) + "!")
+            } elseif (Amt > 0) {
+                concmd(format("lf_log [%s] %q", entity():id(),
+                       format("BJ: Asking %s (%s) for %d",
+                       lastSpoke():id(), lastSpoke():steamID(), Amt)))
+                lastSpoke():payCredits(Amt)
+            }
+            
+            #hideChat(1)
+        }
+    } elseif (Cmd == "hitme") {
+        if (lastSpoke() != Seated) {
+            exit()
+        }
+        
+        LastActivityTime = curtime()
+        
+        Card = Deck:removeNumber(randint(1, Deck:count()))
+        PlayerHand += Card
+        
+        if (PlayerHand <= 21) {
+            if (SayChat) { concmd(format("say [BJ] %d added to hand, hand is now %d", Card, PlayerHand)) }
+            SetPrimaryText = "Added " + toString(Card) + "! Type in chat either: hitme or stand"
+            SetSecondaryText = format("Player Hand: %d\n%s bet %d creds", PlayerHand, Seated:name():sub(1, 7), BetAmount)
+        ### LOSE ###
+        } else {
+            if (SayChat) { concmd(format("say [BJ] You lost! %d pulled, your hand was %d. Dealer had %d.", Card, PlayerHand, DealerHand)) }
+            ResetText = 1
+            SetSecondaryText = "You ended up with a hand of: " + toString(PlayerHand)
+            
+            concmd(format("lf_log [%s] %q", entity():id(),
+                   format("BJ: %s (%s) lost",
+                   Seated:id(), Seated:steamID())))
+            
+            S:entity():soundPlay(1, 20, "music/HL2_song28.mp3")
+            soundPlay(2, 20, "music/HL2_song28.mp3")
+            
+            Seated = noentity()
+        }
+        
+        #hideChat(1)
+    } elseif (Cmd == "stand" | Cmd == "stay") {
+        if (lastSpoke() != Seated) {
+            exit()
+        }
+        
+        ### TIE ###
+        if (DealerHand == PlayerHand) {
+            concmd(format("lf_log [%s] %q", entity():id(),
+                   format("BJ: Stand from %s (%s); hands are equal",
+                   Seated:id(), Seated:steamID())))
+            
+            ResetText = 1
+            SetSecondaryText = "Hands were equal; you win!"
+            if (SayChat) { concmd(format("say [BJ] Hands were equal (%d); you win!", PlayerHand)) }
+            
+            Seated:giveCredits(BetAmount * PayoutRatio)
+            
+#ifdef fx(string,vector,number)
+            fx("balloon_pop", Seated:pos(), 5000)
+#endif
+            S:entity():soundPlay(1, 6, "music/HL1_song25_REMIX3.mp3", 5)
+            soundPlay(1, 6, "music/HL1_song25_REMIX3.mp3", 5)
+        ### LOSE ###
+        } elseif (DealerHand > PlayerHand) {
+            concmd(format("lf_log [%s] %q", entity():id(),
+                   format("BJ: Stand from %s (%s); player loses",
+                   Seated:id(), Seated:steamID())))
+            
+            ResetText = 1
+            SetSecondaryText = format("Dealer had %d, you had %d", DealerHand, PlayerHand)
+            if (SayChat) { concmd(format("say [BJ] Dealer had %d, you had %d", DealerHand, PlayerHand)) }
+            
+            S:entity():soundPlay(1, 20, "music/HL2_song28.mp3")
+            soundPlay(2, 20, "music/HL2_song28.mp3")
+        ### WIN ###
+        } elseif (DealerHand < PlayerHand) {
+            concmd(format("lf_log [%s] %q", entity():id(),
+                   format("BJ: Stand from %s (%s); player WINS",
+                   Seated:id(), Seated:steamID())))
+            
+            ResetText = 1
+            SetSecondaryText = format("Dealer had %d, you had %d!", DealerHand, PlayerHand)
+            if (SayChat) { concmd(format("say [BJ] Dealer had %d, you had %d!", DealerHand, PlayerHand)) }
+            
+            Seated:giveCredits(BetAmount * PayoutRatio)
+            
+#ifdef fx(string,vector,number)
+            fx("balloon_pop", Seated:pos(), 5000)
+#endif
+            S:entity():soundPlay(1, 6, "music/HL1_song25_REMIX3.mp3", 5)
+            soundPlay(1, 6, "music/HL1_song25_REMIX3.mp3", 5)
+        }
+        
+        Seated = noentity()
+        
+        #hideChat(1)
+    }
+} elseif (payClk()) {
+    Info = payClk()
+    # namt	=	10
+    # efrom	=	Player [5][sk89q]
+    # nallowed	=	1
+    
+    Amt = Info["amt", number]
+    From = Info["from", entity]
+    Allowed = Info["allowed", number]
+    
+    if (!Allowed) {
+        exit()
+    }
+    
+    if (credits() < Amt * PayoutRatio + 10000) {
+        concmd("say [BJ] Game is currently unavailable")
+        From:giveCredits(Amt)
+        exit()
+    }
+    
+    if (Amt > MaxBet) {
+        concmd("say [BJ] Bets allowed only up to " + toString(MaxBet) + "!")
+        From:giveCredits(Amt)
+        exit()
+    }
+    
+    if (Amt > 0) {
+        concmd(format("lf_log [%s] %q", entity():id(),
+               format("BJ: Received from %d credits from %s (%s)",
+               Amt, From:id(), From:steamID())))
+        
+        # Return credits if someone is already playing
+        if (Seated) {
+            concmd(format("lf_log [%s] %q", entity():id(),
+                   "BJ: Someone is already seated; returning credits"))
+            
+            From:giveCredits(Amt)
+        # Start playing!
+        } else {
+            S:entity():soundPlay(1, 10, "music/ambient/levels/labs/coinslot1.wav")
+            soundPlay(1, 10, "music/ambient/levels/labs/coinslot1.wav")
+            
+            concmd(format("lf_log [%s] %q", entity():id(),
+                   "BJ: Accepted player!"))
+            
+            Seated = From
+            BetAmount = Amt
+            PlayerHand = 0
+            DealerHand = 0
+            LastActivityTime = curtime()
+            
+            # Build deck
+            Deck = array(
+                1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 10, 10, 10,
+                1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 10, 10, 10,
+                1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 10, 10, 10,
+                1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 10, 10, 10
+            )
+            
+            PlayerHand = Deck:removeNumber(randint(1, Deck:count())) +
+                         Deck:removeNumber(randint(1, Deck:count()))
+            DealerHand = Deck:removeNumber(randint(1, Deck:count())) +
+                         Deck:removeNumber(randint(1, Deck:count()))
+            
+            while (DealerHand < DealerHandThreshold) {
+                DealerHand += Deck:removeNumber(randint(1, Deck:count()))
+            }
+            
+            if (DealerHand > 21) {
+                ResetText = 1
+                SetSecondaryText = format("Dealer had %d, overdrew!", DealerHand)
+                if (SayChat) { concmd(format("say [BJ] Dealer had %d, overdrew!", DealerHand)) }
+                
+                Seated:giveCredits(BetAmount * PayoutRatio)
+                
+#ifdef fx(string,vector,number)
+                fx("balloon_pop", Seated:pos(), 5000)
+#endif
+                S:entity():soundPlay(1, 6, "music/HL1_song25_REMIX3.mp3", 5)
+                soundPlay(1, 6, "music/HL1_song25_REMIX3.mp3", 5)
+            } else {
+                if (SayChat) { concmd(format("say [BJ] Your hand is %d", PlayerHand)) }
+                
+                SetPrimaryText = "Accepted player! Type in chat either: hitme or stand"
+                SetSecondaryText = format("Player Hand: %d\n%s bet %d creds", PlayerHand, Seated:name():sub(1, 7), BetAmount)
+            }
+        }
+    }
+}
+
+#ifdef wirelink:egpDraw()
+if (SetPrimaryText) {
+    S:egpSetText(6, SetPrimaryText)
+}
+
+if (ResetText) {
+    S:egpSetText(6, "Ready for a player! Type in chat: blackjack #### with the # of credits to bet! PAYOUT: " + toString(PayoutRatio) + ":1")
+}
+
+if (SetSecondaryText) {
+    S:egpSetText(8, SetSecondaryText)
+}
+
+if (SetPrimaryText | ResetText | SetSecondaryText) {
+    S:egpDraw()
+}
+#endif
