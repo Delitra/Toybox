@@ -8,7 +8,7 @@
 
 if (first() | dupefinished() | ~S) {
     PayoutRatio = 3
-    MaxBet = 100000
+    MaxBet = 50000
     SayChat = 0
     DealerHandThreshold = 17
     
@@ -131,6 +131,10 @@ if (first() | dupefinished() | ~S) {
             exit()
         }
         
+        while (DealerHand < DealerHandThreshold) {
+            DealerHand += Deck:removeNumber(randint(1, Deck:count()))
+        }
+        
         ### TIE ###
         if (DealerHand == PlayerHand) {
             concmd(format("lf_log [%s] %q", entity():id(),
@@ -140,6 +144,23 @@ if (first() | dupefinished() | ~S) {
             ResetText = 1
             SetSecondaryText = "Hands were equal; you win!"
             if (SayChat) { concmd(format("say [BJ] Hands were equal (%d); you win!", PlayerHand)) }
+            
+            Seated:giveCredits(BetAmount * PayoutRatio)
+            
+#ifdef fx(string,vector,number)
+            fx("balloon_pop", Seated:pos(), 5000)
+#endif
+            S:entity():soundPlay(1, 6, "music/HL1_song25_REMIX3.mp3", 5)
+            soundPlay(1, 6, "music/HL1_song25_REMIX3.mp3", 5)
+        ### DEALER OVERDRW ###
+        } elseif (DealerHand > 21) {
+            concmd(format("lf_log [%s] %q", entity():id(),
+                   format("BJ: Dealer overdraw %s (%s); player WINS",
+                   Seated:id(), Seated:steamID())))
+            
+            ResetText = 1
+            SetSecondaryText = format("Dealer overdrew to %d, you had %d!", DealerHand, PlayerHand)
+            if (SayChat) { concmd(format("say [BJ] Dealer overdrew to %d, you had %d!", DealerHand, PlayerHand)) }
             
             Seated:giveCredits(BetAmount * PayoutRatio)
             
@@ -222,8 +243,8 @@ if (first() | dupefinished() | ~S) {
             From:giveCredits(Amt)
         # Start playing!
         } else {
-            S:entity():soundPlay(1, 10, "music/ambient/levels/labs/coinslot1.wav")
-            soundPlay(1, 10, "music/ambient/levels/labs/coinslot1.wav")
+            S:entity():soundPlay(1, 10, "ambient/levels/labs/coinslot1.wav")
+            soundPlay(1, 10, "ambient/levels/labs/coinslot1.wav")
             
             concmd(format("lf_log [%s] %q", entity():id(),
                    "BJ: Accepted player!"))
@@ -244,31 +265,12 @@ if (first() | dupefinished() | ~S) {
             
             PlayerHand = Deck:removeNumber(randint(1, Deck:count())) +
                          Deck:removeNumber(randint(1, Deck:count()))
-            DealerHand = Deck:removeNumber(randint(1, Deck:count())) +
-                         Deck:removeNumber(randint(1, Deck:count()))
+            DealerHand = 0
             
-            while (DealerHand < DealerHandThreshold) {
-                DealerHand += Deck:removeNumber(randint(1, Deck:count()))
-            }
+            if (SayChat) { concmd(format("say [BJ] Your hand is %d", PlayerHand)) }
             
-            if (DealerHand > 21) {
-                ResetText = 1
-                SetSecondaryText = format("Dealer had %d, overdrew!", DealerHand)
-                if (SayChat) { concmd(format("say [BJ] Dealer had %d, overdrew!", DealerHand)) }
-                
-                Seated:giveCredits(BetAmount * PayoutRatio)
-                
-#ifdef fx(string,vector,number)
-                fx("balloon_pop", Seated:pos(), 5000)
-#endif
-                S:entity():soundPlay(1, 6, "music/HL1_song25_REMIX3.mp3", 5)
-                soundPlay(1, 6, "music/HL1_song25_REMIX3.mp3", 5)
-            } else {
-                if (SayChat) { concmd(format("say [BJ] Your hand is %d", PlayerHand)) }
-                
-                SetPrimaryText = "Accepted player! Type in chat either: hitme or stand"
-                SetSecondaryText = format("Player Hand: %d\n%s bet %d creds", PlayerHand, Seated:name():sub(1, 7), BetAmount)
-            }
+            SetPrimaryText = "Accepted player! Type in chat either: hitme or stand"
+            SetSecondaryText = format("Player Hand: %d\n%s bet %d creds", PlayerHand, Seated:name():sub(1, 7), BetAmount)
         }
     }
 }
