@@ -1,0 +1,256 @@
+@name DFS Maze Generator Proximity Version [sk89q]
+@outputs Props:array BuiltWall:table NewlyBuilt:array
+@outputs PropW PropH PropL PropAng:angle PropOffset:vector
+@outputs CW CH Model:string NoWall:table CellX CellY
+@persist Visited:table Stack:array ValidModel PrintStack
+@persist Reset:function StartBuild:function FindModelSize:function
+@persist Generate:function
+@persist ShiftX ShiftY
+
+# Need function support and wire_expression2_unlimited 1
+# VERY POORLY CODED BY THE WAY
+
+if (first() | duped()) {
+
+function Reset() {
+    stoptimer("Build")
+    stoptimer("Print")
+    stoptimer("Process")
+    stoptimer("Spawn")
+    runOnTick(0)
+    
+    Props:propDelete()
+    
+    Visited = table()
+    Stack = array()
+    NoWall = table()
+    Props = array()
+}
+
+function StartBuild() {
+    # This is the cell where we start branching paths away from
+    StartCell = vec2(floor(CW / 2), floor(CH / 2))
+    
+    #Entrance = vec2(1, 1)
+    #Entrance = vec2(randint(1, CW), 1)
+    Entrance = vec2(floor(CW / 2), 1)
+    Exit = vec2(randint(1, CW), CH + 1)
+    
+    Stack:pushVector2(StartCell)
+    NoWall[toString(vec(Entrance):setZ(0)), number] = 1
+    NoWall[toString(vec(Exit):setZ(0)), number] = 1
+    
+    runOnTick(1)
+}
+
+function FindModelSize() {
+    E = propSpawn(Model, 1)
+    
+    if (E) {
+        E:propDelete()
+        
+        ValidModel = 1
+        
+        Size = E:boxSize()
+        PropOffset = -E:boxCenter()
+        LargestDim = max(Size:x(), Size:y(), Size:x())
+        
+        if (E:model():find("models/hunter/plates/")) {
+            PropAng = ang(90, 0, 0) 
+            PropW = Size:y()
+            PropH = Size:x()
+            PropL = Size:z()
+        } elseif (LargestDim == Size:y()) {
+            PropAng = ang(0, 0, 0) 
+            PropW = Size:y()
+            PropH = Size:z()
+            PropL = Size:x()
+        } elseif (LargestDim == Size:x()) {
+            PropAng = ang(0, 90, 0) 
+            PropW = Size:x()
+            PropH = Size:z()
+            PropL = Size:y()
+        }
+        
+        print(format("[Maze Gen] Maze model set to %s", Model))
+    } else {
+        print("[Maze Gen] The selected model is not valid.")
+    }
+}
+
+}
+
+if (first() | duped()) {
+    Model = "models/hunter/plates/plate3x4.mdl"
+    CW = 30
+    CH = 30
+    PrintStack = 0
+    
+    runOnChat(1)
+    runOnLast(1)
+    FindModelSize()
+    print("[Maze Gen] Generating maze...")
+    StartBuild()
+    propSpawnEffect(0)
+
+} elseif (last()) {
+    Props:propDelete()
+    
+} elseif (chatClk(owner())) {
+    Cmd = lastSaid():explode(" ")[1, string]:lower():trim()
+    Args = lastSaid():sub(Cmd:length() + 2):trim()
+    
+    if (Cmd == "!gen") {
+        Reset()
+        
+        if (ValidModel) {
+            print("[Maze Gen] Now generating maze graph...")
+            StartBuild()
+        } else {
+            print("[Maze Gen] The selected model is not valid.")
+        }
+    } elseif (Cmd == "!reset") {
+        Reset()
+    } elseif (Cmd == "!model") {
+        Model = Args
+        ValidModel = 0
+        FindModelSize()
+    } elseif (Cmd == "!dim") {
+        M = Args:match("([0-9]+)[^0-9]([0-9]+)")
+        
+        if (M:count() > 0) {
+            CW = M[1, string]:toNumber()
+            CH = M[2, string]:toNumber()
+            print(format("Maze dimensions set to %d x %d", CW, CH))
+        }
+    }
+
+} elseif (clk("Spawn")) {
+    timer("Spawn", 10)
+    ShiftX = -PropW * 2 + PropL / 2 - PropW * CW / 2
+    ShiftY = -PropW * 2 + PropL / 2 - PropW * CH / 2
+    ShiftX = 0
+    ShiftY = 0
+    NumBuilt = 0
+    NewlyBuilt = array()
+    
+    function BuildWall(X, Y, K) {
+        ID = toString(vec(X, Y, K))
+        HasWall = X > 0 & Y > 0 & X <= CH + 1 & Y <= CW + 1 & !NoWall[ID, number]
+        
+        if (HasWall & K == 0 & X > CW) { HasWall = 0 }
+        if (HasWall & K == 1 & Y > CH) { HasWall = 0 }
+        
+        if (HasWall & !BuiltWall[ID, entity]) {
+            if (K == 0) { # Above
+                Wall = vec(X * PropW + PropW / 2,
+                           Y * PropW, 1)
+            } else { # Left of
+                Wall = vec(X * PropW,
+                           Y * PropW + PropW / 2, 0)
+            }
+            
+            Pos = entity():toWorld(Wall:setZ(0) + PropOffset) + PropH / 2
+            Ang = (Wall:z() == 0 ? ang(0, 0, 0) : ang(0, 90, 0)) + PropAng
+            E = propSpawn(Model, Pos, Ang, 1)
+            Props:pushEntity(E)
+            
+            BuiltWall[ID, entity] = E
+        }
+        
+        if (HasWall) {
+            NewlyBuilt[BuiltWall[ID, entity]:id(), number] = 1
+        }
+    }
+    
+    RelPos = entity():toLocal(owner():pos())
+    
+    CellX = round((RelPos:x()) / PropW)
+    CellY = round((RelPos:y()) / PropW)
+    
+    for (X = -4 + CellX, 4 + CellX) {
+        for (Y = -4 + CellY, 4 + CellY) {
+            # if (minquota() < 100 | minquota() < ops() * 2 | NumBuilt > 3) {
+                # exit()
+            # }
+            
+            BuildWall(X, Y, 0)
+            BuildWall(X, Y, 1)
+            NumBuilt++
+        }
+    }
+
+    for (I = 1, Props:count()) {
+        if (!NewlyBuilt[Props[I, entity]:id(), number]) {
+            Props[I, entity]:propDelete()
+        }
+    }
+} elseif (tickClk()) {
+    while (Stack:count() > 0) {
+        if (opcounter() > 10000 | minquota() < 100 | minquota() < ops() * 2) {
+            exit()
+        }
+        
+        Cur = Stack:popVector2()
+        Visited[toString(Cur), number] = 1
+        
+        if (PrintStack) {
+            print(_HUD_PRINTCONSOLE, 
+                  format("%" + toString(Stack:count()) + "s%s", "",
+                  "Cell: " + toString(Cur)))
+        }
+        
+        Neighbors = array()
+        if (Cur:x() != 1) {
+            Neighbors:pushVector2(Cur:setX(Cur:x() - 1))
+        }
+        if (Cur:y() != 1) {
+            Neighbors:pushVector2(Cur:setY(Cur:y() - 1))
+        }
+        if (Cur:x() != CW) {
+            Neighbors:pushVector2(Cur:setX(Cur:x() + 1))
+        }
+        if (Cur:y() != CH) {
+            Neighbors:pushVector2(Cur:setY(Cur:y() + 1))
+        }
+        
+        # Shuffle
+        N = Neighbors:count()
+        while (N > 1) {
+            I = randint(1, N)
+            Temp = Neighbors[N, vector2]
+            Neighbors[N, vector2] = Neighbors[I, vector2]
+            Neighbors[I, vector2] = Temp
+            N--
+        }
+        
+        for (I = 1, Neighbors:count()) {
+            Nb = Neighbors[I, vector2]
+            if (Visited[toString(Nb), number] != 1) {
+                Stack:pushVector2(Cur) # We will be returning to this cell
+                
+                if (Cur:y() == Nb:y()) {
+                    if (Nb:x() < Cur:x()) { # Left of
+                        NoWall[toString(vec(Cur):setZ(1)), number] = 1
+                    } else { # Right of
+                        NoWall[toString(vec(Nb):setZ(1)), number] = 1
+                    }
+                } else {
+                    if (Nb:y() < Cur:y()) { # Above
+                        NoWall[toString(vec(Cur):setZ(0)), number] = 1
+                    } else { # Below
+                        NoWall[toString(vec(Nb):setZ(0)), number] = 1
+                    }
+                }
+                
+                Stack:pushVector2(Nb)
+                
+                break
+            }
+        }
+    }
+    
+    print("[Maze Gen] Maze graph generated; now building props...")
+    timer("Spawn", 0)
+    runOnTick(0)
+}
