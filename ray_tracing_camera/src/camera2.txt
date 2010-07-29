@@ -27,11 +27,13 @@ if (first() | dupefinished() | (~Draw & Draw)) {
     findClipToModel("models/hunter/misc/sphere025x025.mdl")
     PointLights = findToArray()
     
+#ifdef E:setText(S)
     for (I = 1, PointLights:count()) {
         E = PointLights[I, entity]
         E:setText(toString(E:mass()), E:getColor())
         E:setTextRange(400)
     }
+#endif
     
     if (FastMode) {
         Width = FastWidth
