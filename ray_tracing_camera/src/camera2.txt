@@ -1,0 +1,168 @@
+# Copyright (c) 2010 sk89q <http://www.sk89q.com>
+# Released under GPLv2
+
+@name Camera [sk89q]
+@inputs Draw Stop FastMode Screen:wirelink
+@persist NF HQWidth HQHeight FastWidth FastHeight
+@outputs Index LastIndex Total Width Height PointLights:array Working
+@model models/dav0r/camera.mdl
+
+if (first() | dupefinished()) {
+    HQWidth = 256
+    HQHeight = 256
+    FastWidth = 64
+    FastHeight = 64
+    
+    holoCreate(1, entity():pos())
+    holoColor(1, vec(255, 0, 0))
+    holoModel(1, "hqsphere")
+    holoScaleUnits(1, vec(10, 10, 10))
+    
+    interval(1000)
+}
+
+if (first() | dupefinished() | (~Draw & Draw)) {
+    findIncludePlayerProps(owner())
+    findByClass("prop_physics")
+    findClipToModel("models/hunter/misc/sphere025x025.mdl")
+    PointLights = findToArray()
+    
+    for (I = 1, PointLights:count()) {
+        E = PointLights[I, entity]
+        E:setText(toString(E:mass()), E:getColor())
+        E:setTextRange(400)
+    }
+    
+    if (FastMode) {
+        Width = FastWidth
+        Height = FastHeight
+    } else {
+        Width = HQWidth
+        Height = HQHeight
+    }
+    Total = Width * Height
+    Index = 0
+    LastIndex = 0
+    Working = 1
+    Screen[1048574] = 1 # Clear
+    Screen[1048569] = 2 # Color mode
+    Screen[1048572] = Height
+    Screen[1048573] = Width
+    NF = PointLights:count()
+    
+    rangerReset()
+    rangerPersist(1)
+    rangerFlags("WE")
+    rangerFilter(entity())
+    rangerFilter(entity():getConstraints())
+    rangerFilter(PointLights)
+    
+    if (Screen) {
+        runOnTick(1)
+    } else {
+        hint("No screen connected!", 5)
+    }
+} elseif (~Stop & Stop) {
+    Working = 0
+    runOnTick(0)
+    
+#ifdef E:setText(S)
+    entity():setText("Stopped.")
+#endif
+} elseif (~FastMode) {
+    if (FastMode) {
+        Width = FastWidth
+        Height = FastHeight
+    } else {
+        Width = HQWidth
+        Height = HQHeight
+    }
+    Working = 0
+    runOnTick(0)
+    
+#ifdef E:setText(S)
+    entity():setText("Stopped.")
+#endif
+} elseif (clk()) {
+#ifdef E:setText(S)
+    if (Working) {
+        PctDone = Index / (Width * Height) * 100
+        Rate = (Index - LastIndex) / 1
+        LeftSecs = (Total - Index) / Rate
+        entity():setText(round(PctDone) + "%\nETA " + round(LeftSecs) + "s")
+        LastIndex = Index
+    } else {
+        for (I = 1, PointLights:count()) {
+            E = PointLights[I, entity]
+            E:setText(toString(E:mass()), E:getColor())
+        }
+    }
+
+    interval(1000)
+#endif
+} elseif (tickClk()) {
+    while (perf()) {
+        if (Index > Width * Height) {
+#ifdef E:setText(S)
+            entity():setText("Done.")
+#endif
+            hint("Scan finished!", 5)
+            Working = 0
+            runOnTick(0)
+            exit()
+        }
+        
+        X = floor(Index % Width)
+        Y = floor(Index / Width)
+        XFactor = (X - Width / 2) / (Width / 2)
+        YFactor = (Y - Height / 2) / (Height / 2)
+        
+        RD = rangerAngle(5000, -XFactor * 20, -YFactor * 20 - 90)
+        RI = 0
+        
+        # Mirrors
+        while (RI < 8 & RD:entity() & RD:entity():getMaterial() == "debug/env_cubemap_model") {
+            BaseHitPos = RD:position() + RD:hitNormal() * 1
+            V = RD:position() - entity():pos()
+            ReflectionAng = (V - 2 * V:dot(RD:hitNormal()) * RD:hitNormal()):toAngle()
+            RD = rangerOffset(5000, BaseHitPos, ReflectionAng:forward())
+            RI++
+        }
+        
+        HitPos = RD:position()
+        holoPos(1, HitPos)
+        
+        # Ground vs. entity base color
+        if (RD:entity()) {
+            E = RD:entity()
+            PointColor = E:getColor()
+            #PointColor = vec(255, 255, 255)
+        } elseif (RD:hit()) {
+            PointColor = vec(0, 255, 0)
+        } else {
+            PointColor = vec(0, 0, 0)
+        }
+        
+        # Point lights
+        LightColor = vec(0, 0, 0)
+        for (I = 1, PointLights:count()) {
+            Light = PointLights[I, entity]
+            LRD = rangerOffset(10000, Light:pos(), HitPos - Light:pos())
+            Dist = LRD:position():distance(HitPos)
+            
+            if (LRD:hit() & Dist < 3) {
+                LColor = Light:getColor() * 
+                    (1 - min(1, LRD:distance() / (Light:mass()))) * 
+                    (1 - min(Dist / 3, 1))
+                LightColor += LColor
+            }
+        }
+        
+        Max = max(PointColor:x(), PointColor:y(), PointColor:z())
+        PointColor = (PointColor / 255 * LightColor / (255 * NF)) * 255
+        
+        Screen[Index] = rgb2digi(PointColor, 2)
+        
+        Index++
+    }
+}
