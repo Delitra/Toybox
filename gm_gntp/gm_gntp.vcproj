@@ -40,7 +40,7 @@
 			<Tool
 				Name="VCCLCompilerTool"
 				Optimization="0"
-				AdditionalIncludeDirectories="lib;&quot;lib/gntp-send&quot;;luainterface"
+				AdditionalIncludeDirectories="include;include/gntp-send"
 				PreprocessorDefinitions="NO_SDK"
 				MinimalRebuild="true"
 				BasicRuntimeChecks="3"
@@ -112,7 +112,7 @@
 				Name="VCCLCompilerTool"
 				Optimization="2"
 				EnableIntrinsicFunctions="true"
-				AdditionalIncludeDirectories="lib;&quot;lib/gntp-send&quot;;luainterface"
+				AdditionalIncludeDirectories="include;include/gntp-send"
 				PreprocessorDefinitions="NO_SDK"
 				RuntimeLibrary="2"
 				EnableFunctionLevelLinking="true"
@@ -175,19 +175,19 @@
 				Name="gtnp-send"
 				>
 				<File
-					RelativePath=".\lib\gntp-send\growl.c"
+					RelativePath=".\include\gntp-send\growl.c"
 					>
 				</File>
 				<File
-					RelativePath=".\lib\gntp-send\growl.def"
+					RelativePath=".\include\gntp-send\growl.def"
 					>
 				</File>
 				<File
-					RelativePath=".\lib\gntp-send\md5.c"
+					RelativePath=".\include\gntp-send\md5.c"
 					>
 				</File>
 				<File
-					RelativePath=".\lib\gntp-send\tcp.c"
+					RelativePath=".\include\gntp-send\tcp.c"
 					>
 				</File>
 			</Filter>
@@ -198,34 +198,34 @@
 			UniqueIdentifier="{93995380-89BD-4b04-88EB-625FBE52EBFB}"
 			>
 			<File
-				RelativePath=".\luainterface\GMLuaModule.h"
+				RelativePath=".\include\GMLuaModule.h"
 				>
 			</File>
 			<File
-				RelativePath=".\luainterface\ILuaInterface.h"
+				RelativePath=".\include\ILuaInterface.h"
 				>
 			</File>
 			<File
-				RelativePath=".\luainterface\ILuaModuleManager.h"
+				RelativePath=".\include\ILuaModuleManager.h"
 				>
 			</File>
 			<File
-				RelativePath=".\luainterface\ILuaObject.h"
+				RelativePath=".\include\ILuaObject.h"
 				>
 			</File>
 			<Filter
-				Name="gtnp-send"
+				Name="gntp-send"
 				>
 				<File
-					RelativePath=".\lib\gntp-send\growl.h"
+					RelativePath=".\include\gntp-send\growl.h"
 					>
 				</File>
 				<File
-					RelativePath=".\lib\gntp-send\md5.h"
+					RelativePath=".\include\gntp-send\md5.h"
 					>
 				</File>
 				<File
-					RelativePath=".\lib\gntp-send\tcp.h"
+					RelativePath=".\include\gntp-send\tcp.h"
 					>
 				</File>
 			</Filter>
