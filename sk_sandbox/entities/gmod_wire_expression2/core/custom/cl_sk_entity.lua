@@ -1,0 +1,1 @@
+language.Add("Undone_e2_spawned_entity", "E2 Spawned Entity")
