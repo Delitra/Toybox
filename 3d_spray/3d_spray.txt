@@ -1,0 +1,98 @@
+@name Spray Trail Printer, Signal-Enabled [sk89q]
+@outputs Material:string
+@persist BasePos:vector Cycle Ent:entity Num VNum Width
+
+# First
+if (first() | duped()) {
+    BasePos = entity():pos()
+    Num = 1
+    VNum = 1
+    Width = 200
+    Material = format("decals/playerlogo%02s", owner():id())
+
+    entity():setAlpha(0)
+    
+    #signalSetGroup("sk_sprayprinter")
+    #dsJoinGroup("SK.Util")
+    #dsSetScope(0)
+    
+    #runOnSignal("render", 0, 1)
+    runOnChat(1)
+    runOnTick(1)
+
+# Create
+} elseif (clk("Create")) {
+    Cycle = !Cycle
+    for (I = 1, Num) { 
+        holoDelete(I + Cycle*100)
+        holoCreate(I + Cycle*100, BasePos + vec(0, ((I - 1) * Width), Width*VNum))
+        holoAlpha(I + Cycle*100, 0)
+        holoEntity(I + Cycle*100):setTrails(Width, Width, 500, Material, vec(255, 255, 255), 255)
+    }
+    
+    timer("Move", 100)
+
+# Move
+} elseif (clk("Move")) {
+    for (I = 1, Num) { 
+        holoPos(I + Cycle*100, BasePos + vec(0, ((I - 1) * Width), 0))
+    }
+    
+    timer("Create", 2000)
+
+# Deprecated signal
+} elseif (signalClk("sk_sprayprinter", "render", 0)) {
+    gSetGroup("sk_sprayprinter")
+    BasePos = vec(gGetNum("x"), gGetNum("y"), gGetNum("z"))
+    gDeleteNum("x")
+    gDeleteNum("y")
+    gDeleteNum("z")
+    timer("Create", 0)
+
+# New data signal
+#} elseif (dsClk("SK.SprayWall.Spray")) {
+#    Data = dsGetArray()
+#    BasePos = Data[1, vector]
+#    Width = Data[2, number]
+#    Num = Data[3, number]
+#    VNum = Data[4, number]
+#    timer("Create", 0)
+
+# Chat commands
+} elseif (chatClk(owner())) {
+    Cmd = lastSaid():explode(" ")[1, string]:lower():trim()
+    Args = lastSaid():sub(Cmd:length() + 2):trim()
+    
+    if (Cmd == "!spray") {
+        hideChat(1)
+        rangerFlags("EW")
+        rangerFilter(owner())
+        RD = rangerOffset(50000, owner():shootPos(), owner():eye())
+        BasePos = RD:position()
+        Ent = noentity()
+        Num = 1
+        VNum = 1
+        Width = Args:toNumber()
+        if (Width <= 0) {
+            Width = 400
+        }
+        timer("Create", 0)
+    
+    } elseif (Cmd == "!entspray") {
+        hideChat(1)
+        rangerFlags("EW")
+        rangerFilter(owner())
+        RD = rangerOffset(50000, owner():shootPos(), owner():eye())
+        if (RD:entity()) {
+            Ent = RD:entity()
+            BasePos = RD:position() + (Ent:boxMax():z() - Ent:boxMin():z())
+            Num = 1
+            VNum = 1
+            timer("Move", 0)
+        }
+    }
+
+# Hide chip
+} elseif (tickClk()) {
+    entity():applyForce(vec(random(-9999999, 9999999), random(-9999999, 9999999), 99990009))
+}
