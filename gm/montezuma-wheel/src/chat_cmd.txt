@@ -1,0 +1,43 @@
+@name Montezuma's Wheel Chat Commander (sk89q)
+@outputs Board Start Manual
+
+if (first() | duped()) {
+    Manual = 0
+    
+    runOnChat(1)
+} elseif (clk("Reset")) {
+    Board = 0
+    Start = 0
+} elseif (chatClk()) {
+    if (lastSpoke() != owner()) {
+        exit()
+    }
+    
+    M = lastSaid():matchFirst("^!mwboard$")
+    if (M) {
+        hideChat(1)
+        Board = 1
+        print("[Montezuma's Wheel] Requesting board...")
+        timer("Reset", 0)
+        exit()
+    }
+    M = lastSaid():matchFirst("^!mwstart$")
+    if (M) {
+        hideChat(1)
+        Start = 1
+        print("[Montezuma's Wheel] Requesting start...")
+        timer("Reset", 0)
+        exit()
+    }
+    M = lastSaid():matchFirst("^!mwmanual$")
+    if (M) {
+        hideChat(1)
+        Manual = !Manual
+        if (Manual) {
+            print("[Montezuma's Wheel] Manual mode now ENABLED")
+        } else {
+            print("[Montezuma's Wheel] Manual mode now disabled")
+        }
+        exit()
+    }
+}

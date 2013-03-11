@@ -1,0 +1,8 @@
+0	song	ui/gamestartup6.mp3
+0	title	Petite Chou-Fleur
+0	algorithm	0
+0	diameter	6000
+0	height	4000
+0	speed	1
+0	trails	50	200	10	trails/smoke	255,255,255	255
+7	end

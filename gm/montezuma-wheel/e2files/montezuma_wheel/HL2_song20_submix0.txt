@@ -1,0 +1,22 @@
+0	song	music/HL2_song20_submix0.mp3
+0	title	HL2_song20_submix0
+0	algorithm	2
+0	diameter	2000
+0	height	1000
+0	speed	1
+0	trails	50	1200	4	trails/plasma	23,215,255	255
+14.7	lightson
+14.7	lightsrate	0.594059406
+14.7	lightscol	23,215,255	222,255,255
+14.7	lights	1000	2000	0	3
+14.7	diameter	5000
+14.7	speed	20
+28.5	speed	1
+29.2	speed	-20
+53	algorithm	2
+53	speed	1
+53	diameter	3000
+77.14	speed	4
+97	speed	-1
+103	speed	0
+103	end

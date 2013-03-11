@@ -1,0 +1,477 @@
+# DFS Maze Generator v1.2
+# Copyright (c) 2010 sk89q <http://www.sk89q.com>
+# Licensed under GPLv3
+#
+# Original file:
+# http://github.com/sk89q/gmod/blob/master/maze_gen_e2/src/maze_gen_dfs.txt
+#
+# This E2 requires PropCore to generate the props.
+#
+# It implements the depth-first search algorithm to generate 2D,
+# perfect, orthogonal mazes. Because DFS is a recursive algorithm and
+# E2 does not support functions, we have to use a stack and backtrack
+# along the "main path."
+#
+# This E2 represents cells as a vector2, where the first number is X, and
+# the second number is Y. For walls, we assign two walls to each cell: the
+# wall directly above, and the wall directly to the left. We store walls as
+# a vector, with the X and Y components referring to the location of
+# the cell that the wall belongs to, with the Z component specifing which
+# wall it is. If the Z component is 0, then that means that it is the wall
+# above the cell, and it's 1 if the wall is to the left of the cell. If we
+# want to get the wall below or the wall to the right, we will then add 1
+# to the Y, or add 1 to the X, respectively, moving one cell below or
+# one cell to the right. For the walls on the very bottom and the very
+# right, we have to go outside the dimensions of the maze in order to
+# specify those walls.
+#
+# A mention of the data structures being used is worthy of a mention.
+# Cells can be defined using only two numbers: X and Y, but walls are a bit
+# more complicated. Each cell contains up to 4 walls, and walls are shared
+# between up to two cells, so we need a way to refer to a specific wall
+# without having to keep track of the wall state for two different cells
+# separately.
+#
+# This is how the walls for a 1-by-1 maze would be formed. Cells 2, 3, and
+# 4 are outside the maze, and 2 and 3 have one wall each that makes up
+# the right-most and bottom-most walls.
+#  _  
+# |1 |2
+#  _  
+#  3  4
+#
+# The depth-first search algorithm is as follows:
+#   1. Start with a grid of walls.
+#   2. Select one cell in the maze to start branching from. We are using
+#      the cell directly in the middle.
+#   3. Mark the current cell as visited, and build a list of neighbors. 
+#      For each neighbor, starting with a random one:
+#        1. If we haven't visited that neighbor, remove the wall in
+#           between, and then recurse with the neighbor as the current
+#           cell.
+#
+# However, since recursion requires that we have functions, and
+# Expression 2 does not, we have to approach it differently. We will
+# emulate recursion by building a stack of cells that we need to visit.
+#
+# The modified algorithm is as follows:
+#   1. Start with a grid of walls.
+#   2. Select one cell in the maze to start branching from. We are using
+#      the cell directly in the middle. Add this cell to the stack.
+#   3. Pop off the last added cell on the stack, and make this the current
+#      cell. Mark the cell as visited, and build a list of neighbors.
+#
+#      If there are no neighbors that have not been visited:
+#        1. Repeat step #3 if there are any cells left in the stack.
+#
+#      Otherwise, select one neighbor at random that has not been visited,
+#      and proceed to:
+#        1. Put the current cell back onto the end of the stack.
+#        2. Remove the wall in between.
+#        3. Put the neighbor onto the end of the stack.
+#        4. Repeat step #3.
+#
+# To help with visualizing the algorithm, you can set the PrintStack
+# variable below to 1.
+#
+
+@name DFS Maze Generator v1.2 [sk89q]
+@inputs Regenerate Clear
+@outputs NeededWalls:array Props:array
+@outputs PropW PropH PropL PropAng:angle PropOffset:vector
+@outputs CW CH SpawnRate Model:string NoWall:table
+@persist Visited:table Stack:array SY SX
+@persist BuildAfterSize ValidModel DestructOnDelete DrawASCII PrintStack
+@persist RandomSpawn
+
+if (first() | duped()) {
+    Model = "models/props_lab/blastdoor001b.mdl"
+    CW = 10
+    CH = 10
+    SpawnRate = 4
+    DestructOnDelete = 1 # Will cause the whole maze and E2 to be deleted upon 
+                         # removal/undo of any single prop
+    DestructOnE2Removal = 1 # Will cause the whole maze and E2 to be deleted upon 
+                            # removal of the E2
+    DrawASCII = 0 # Draw the ASCII map in console (don;t use for large mazes)
+    GenerateOnLoad = 1 # Generate a maze when the chip is spawned
+    PrintStack = 0 # Prints the cells being processed, as they are
+                   # processed
+    RandomSpawn = 1 # Spawn props randomly, rather than by row
+    
+    ValidModel = 0
+    BuildAfterSize = GenerateOnLoad
+    
+    runOnChat(1)
+    if (DestructOnE2Removal) {
+        runOnLast(1)
+    }
+    timer("FindModelSize", 0)
+
+} elseif (clk("Build")) {
+    # This is the cell where we start branching paths away from
+    StartCell = vec2(floor(CW / 2), floor(CH / 2))
+    
+    #Entrance = vec2(1, 1)
+    #Entrance = vec2(randint(1, CW), 1)
+    Entrance = vec2(floor(CW / 2), 1)
+    Exit = vec2(randint(1, CW), CH + 1)
+    
+    Stack:pushVector2(StartCell)
+    NoWall[toString(vec(Entrance):setZ(0)), number] = 1
+    NoWall[toString(vec(Exit):setZ(0)), number] = 1
+
+    runOnTick(1)
+
+} elseif (last()) {
+    Props:propDelete()
+
+} elseif (chatClk(owner())) {
+    Cmd = lastSaid():explode(" ")[1, string]:lower():trim()
+    Args = lastSaid():sub(Cmd:length() + 2):trim()
+    
+    if (Cmd == "!genmaze" | Cmd == "!mazegen" | Cmd == "!mgcreate" |
+        Cmd == "!mggen") {
+        stoptimer("Build")
+        stoptimer("Print")
+        stoptimer("Process")
+        stoptimer("Spawn")
+        runOnTick(0)
+        
+        Props:propDelete()
+        
+        Visited = table()
+        Stack = array()
+        NoWall = table()
+        NeededWalls = array()
+        Props = array()
+        
+        if (ValidModel) {
+            print("[Maze Gen] Now generating maze graph...")
+            timer("Build", 0)
+        } else {
+            print("[Maze Gen] The selected model is not valid.")
+        }
+    } elseif (Cmd == "!mgclear" | Cmd == "!mgdel" | Cmd == "!mgdelete" | 
+              Cmd == "!mgrem" | Cmd == "!mgremove" | Cmd == "!mgdestroy" | 
+              Cmd == "!mgreset") {
+        stoptimer("Build")
+        stoptimer("Print")
+        stoptimer("Process")
+        stoptimer("Spawn")
+        runOnTick(0)
+        
+        Props:propDelete()
+        
+        Visited = table()
+        Stack = array()
+        NoWall = table()
+        NeededWalls = array()
+        Props = array()
+    } elseif (Cmd == "!mgkeep") {
+        runOnLast(0)
+    } elseif (Cmd == "!mgmodel") {
+        Model = Args
+        ValidModel = 0
+        timer("FindModelSize", 0)
+    } elseif (Cmd == "!mgsize" | Cmd == "!mgdim") {
+        M = Args:match("([0-9]+)[^0-9]([0-9]+)")
+        
+        if (M:count() > 0) {
+            CW = M[1, string]:toNumber()
+            CH = M[2, string]:toNumber()
+            print(format("Maze dimensions set to %d x %d", CW, CH))
+        }
+    }
+    
+} elseif (~Regenerate & Regenerate) {
+    stoptimer("Build")
+    stoptimer("Print")
+    stoptimer("Process")
+    stoptimer("Spawn")
+    runOnTick(0)
+    
+    Props:propDelete()
+    
+    Visited = table()
+    Stack = array()
+    NoWall = table()
+    NeededWalls = array()
+    Props = array()
+    
+    if (ValidModel) {
+        print("[Maze Gen] Now generating maze graph...")
+        timer("Build", 0)
+    } else {
+        print("[Maze Gen] The selected model is not valid.")
+    }
+
+} elseif (~Clear & Clear) {
+    stoptimer("Build")
+    stoptimer("Print")
+    stoptimer("Process")
+    stoptimer("Spawn")
+    runOnTick(0)
+    
+    Props:propDelete()
+    
+    Visited = table()
+    Stack = array()
+    NoWall = table()
+    NeededWalls = array()
+    Props = array()
+
+} elseif (clk("FindModelSize")) {
+    E = propSpawn(Model, 1)
+    
+    if (E) {
+        E:propDelete()
+        
+        ValidModel = 1
+        
+        Size = E:boxSize()
+        PropOffset = -E:boxCenter()
+        LargestDim = max(Size:x(), Size:y(), Size:x())
+        
+        if (E:model():find("models/hunter/plates/")) {
+            PropAng = ang(90, 0, 0) 
+            PropW = Size:y()
+            PropH = Size:x()
+            PropL = Size:z()
+        } elseif (LargestDim == Size:y()) {
+            PropAng = ang(0, 0, 0) 
+            PropW = Size:y()
+            PropH = Size:z()
+            PropL = Size:x()
+        } elseif (LargestDim == Size:x()) {
+            PropAng = ang(0, 90, 0) 
+            PropW = Size:x()
+            PropH = Size:z()
+            PropL = Size:y()
+        }
+        
+        if (BuildAfterSize) {
+            BuildAfterSize = 0
+            
+            print("[Maze Gen] Now generating maze graph...")
+            timer("Build", 0)
+        } else {
+            print(format("[Maze Gen] Maze model set to %s", Model))
+        }
+    } else {
+        print("[Maze Gen] The selected model is not valid.")
+    }
+
+} elseif (clk("Print")) {
+    for (Y = SY, CH) {
+        if (minquota() < 100 | minquota() < ops()) {
+            timer("Print", 20)
+            exit()
+        }
+        
+        Line = ""
+        for (X = 1, CW) {
+            if (NoWall[toString(vec(X, Y, 0)), number]) {
+                Line += "+ "
+            } else {
+                Line += "+-"
+            }
+        }
+        print(_HUD_PRINTCONSOLE, Line + "+")
+        
+        Line = ""
+        for (X = 1, CW + 1) {
+            if (X <= CW) {
+                CellSpace = " "
+            } else {
+                CellSpace = ""
+            }
+            
+            if (NoWall[toString(vec(X, Y, 1)), number]) {
+                Line += " " + CellSpace
+            } else {
+                Line += "|" + CellSpace
+            }
+        }
+        print(_HUD_PRINTCONSOLE, Line)
+        
+        SY = Y
+    }
+    
+    Line = ""
+    for (X = 1, CW) {
+        if (NoWall[toString(vec(X, CH + 1, 0)), number]) {
+            Line += "+ "
+        } else {
+            Line += "+-"
+        }
+    }
+    print(_HUD_PRINTCONSOLE, Line + "+")
+    
+    print("[Maze Gen] Check console for an ASCII map; now building list of props...")
+    
+    SY = 1, SX = 1
+    timer("Process", 0)
+
+} elseif (clk("DetectDeletion")) {
+    for (I = 1, Props:count()) {
+        E = Props[I, entity]
+        
+        if (!E) {
+            Props:propDelete()
+            selfDestruct()
+            exit()
+        }
+    }
+    
+    timer("DetectDeletion", 1000)
+
+} elseif (clk("Process")) {
+    ShiftX = -PropW * 2 + PropL / 2 - PropW * CW / 2
+    ShiftY = PropW * CH / 2
+    
+    for (Y = SY, CH) {
+        SY = Y
+        
+        for (X = SX, CW + 1) {
+            if (minquota() < 100 | minquota() < ops()) {
+                timer("Process", 0)
+                exit()
+            }
+            
+            if (X <= CW & !NoWall[toString(vec(X, Y, 0)), number]) {
+                NeededWalls:pushVector(vec(X * PropW + PropW / 2 + ShiftX,
+                                           -Y * PropW + ShiftY, 1))
+            }
+            
+            if (!NoWall[toString(vec(X, Y, 1)), number]) {
+                NeededWalls:pushVector(vec(X * PropW + ShiftX,
+                                           -Y * PropW - PropW / 2 + ShiftY, 0))
+            }
+            
+            SX = X
+        }
+        
+        SX = 1
+    }
+    
+    Y = CH + 1
+    for (X = 1, CW) {
+        if (!NoWall[toString(vec(X, Y, 0)), number]) {
+            NeededWalls:pushVector(vec(X * PropW + PropW / 2 + ShiftX,
+                                       -Y * PropW + ShiftY, 1))
+        }
+    }
+    
+    ETA = ceil(NeededWalls:count() * max(1000/SpawnRate, 15) / 1000)
+    print(format("[Maze Gen] %d props required, ETA %d:%02s",
+          NeededWalls:count(), floor(ETA / 60), ETA % 60))
+    timer("Spawn", 0)
+    
+    if (DestructOnDelete) {
+        timer("DetectDeletion", 1000)
+    }
+
+} elseif (clk("Spawn")) {
+    if (!RandomSpawn) {
+        Wall = NeededWalls:removeVector(1)
+    } else {
+        Wall = NeededWalls:removeVector(randint(1, NeededWalls:count()))
+    }
+    
+    Pos = entity():toWorld(Wall:setZ(0) + PropOffset) + PropH / 2
+    Ang = (Wall:z() == 0 ? ang(0, 0, 0) : ang(0, 90, 0)) + PropAng
+    E = propSpawn(Model, Pos, Ang, 1)
+    
+    if (E) {
+        #E:parentTo(entity())
+        Props:pushEntity(E)
+        
+        if (NeededWalls:count() > 0) {
+            timer("Spawn", 1000/SpawnRate)
+        } else {
+            print("[Maze Gen] Maze has finished spawning.")
+        }
+    } else {
+         print("[Maze Gen] You appear to have hit a prop or spawn limit.")
+    }
+
+} elseif (tickClk()) {
+    while (Stack:count() > 0) {
+        if (minquota() < 100 | minquota() < ops() * 2) {
+            exit()
+        }
+        
+        Cur = Stack:popVector2()
+        Visited[toString(Cur), number] = 1
+        
+        if (PrintStack) {
+            print(_HUD_PRINTCONSOLE, 
+                  format("%" + toString(Stack:count()) + "s%s", "",
+                  "Cell: " + toString(Cur)))
+        }
+        
+        Neighbors = array()
+        if (Cur:x() != 1) {
+            Neighbors:pushVector2(Cur:setX(Cur:x() - 1))
+        }
+        if (Cur:y() != 1) {
+            Neighbors:pushVector2(Cur:setY(Cur:y() - 1))
+        }
+        if (Cur:x() != CW) {
+            Neighbors:pushVector2(Cur:setX(Cur:x() + 1))
+        }
+        if (Cur:y() != CH) {
+            Neighbors:pushVector2(Cur:setY(Cur:y() + 1))
+        }
+        
+        # Shuffle
+        N = Neighbors:count()
+        while (N > 1) {
+            I = randint(1, N)
+            Temp = Neighbors[N, vector2]
+            Neighbors[N, vector2] = Neighbors[I, vector2]
+            Neighbors[I, vector2] = Temp
+            N--
+        }
+        
+        for (I = 1, Neighbors:count()) {
+            Nb = Neighbors[I, vector2]
+            if (Visited[toString(Nb), number] != 1) {
+                Stack:pushVector2(Cur) # We will be returning to this cell
+                
+                if (Cur:y() == Nb:y()) {
+                    if (Nb:x() < Cur:x()) { # Left of
+                        NoWall[toString(vec(Cur):setZ(1)), number] = 1
+                    } else { # Right of
+                        NoWall[toString(vec(Nb):setZ(1)), number] = 1
+                    }
+                } else {
+                    if (Nb:y() < Cur:y()) { # Above
+                        NoWall[toString(vec(Cur):setZ(0)), number] = 1
+                    } else { # Below
+                        NoWall[toString(vec(Nb):setZ(0)), number] = 1
+                    }
+                }
+                
+                Stack:pushVector2(Nb)
+                
+                break
+            }
+        }
+    }
+    
+    if (DrawASCII) {
+        print("[Maze Gen] Maze graph generated; now generating ASCII map...")
+        
+        SY = 1, SX = 1
+        timer("Print", 0)
+    } else {
+        print("[Maze Gen] Maze graph generated; now building list of props...")
+        
+        SY = 1, SX = 1
+        timer("Process", 0)
+    }
+    
+    runOnTick(0)
+}

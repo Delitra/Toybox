@@ -1,0 +1,30 @@
+0	song	music/HL2_song15.mp3
+0	title	The Shift
+0	algorithm	0
+0	diameter	400
+0	height	600
+0	speed	1
+0	trails	50	100	3	trails/physbeam	255,0,216	255
+1.52	speed	4
+1.52	diameter	2000
+10	speed	-4
+11	speed	4
+22.57	trails	50	100	3	trails/physbeam	255,0,216	255
+22.57	diameter	4000
+22.57	height	4000
+32.8	speed	1
+36.3	speed	3
+36.7	speed	5
+38	speed	7
+40	speed	10
+43	speed	-10
+53	speed	10
+53	trails	50	100	3	trails/physbeam	0,0,216	255
+63.72	height	3600
+64	height	800
+65	speed	9
+66	speed	7
+67	speed	5
+68	speed	2
+69	height	0
+69.22	end

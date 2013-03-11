@@ -1,0 +1,10 @@
+"AddonInfo"
+{
+	"name"				"Multi-Tool"
+	"version"			"1.0"
+	"author_name"		"sk89q"
+	"author_email"		""
+	"author_url"		"http://www.sk89q.com"
+	"info"				"Perform operations on multiple entities at once."
+	"override"			"0"
+}

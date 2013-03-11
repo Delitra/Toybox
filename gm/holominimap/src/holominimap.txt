@@ -1,0 +1,181 @@
+# SK's HoloMinimap
+# Copyright (c) 2009 sk89q <http://sk89q.therisenrealm.com>
+# 
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+# 
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+# 
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+# 
+# $Id$
+
+@name HoloMinimap [sk89q]
+@inputs On Range SizeScale PositionScale TurboMode ShiftZ ExcludeSelf ExcludeEntities:array
+@outputs Ready
+@persist UseRange UseSizeScale UsePositionScale Found:array CreatedHaloIndex RenderIndex
+@trigger On Range SizeScale PositionScale ExcludeSelf ExcludeEntities
+
+# Detect change in variables
+if (first() | ~Range | ~SizeScale | ~PositionScale) {
+    if (Range > 10) {
+        UseRange = Range
+    } else {
+        UseRange = 100000
+    }
+    if (SizeScale > 0) {
+        UseSizeScale = SizeScale
+    } else {
+        UseSizeScale = 0.06
+    }
+    if (PositionScale > 0) {
+        UsePositionScale = PositionScale
+    } else {
+        UsePositionScale = UseSizeScale * 0.9
+    }
+}
+
+if (first() | duped()) {
+    if (!findCanQuery()) {
+        print("Query functions are disabled!")
+        exit()
+    }
+    
+    findIncludeClass("player")
+    findIncludeClass("npc_*")
+    findIncludeClass("prop_physics")
+    
+    # Exclusion
+    if (ExcludeSelf) {
+        findDisallowEntities(entity():getConstraints())
+    }
+    findDisallowEntities(ExcludeEntities)
+    
+    if (On) {
+        runOnTick(1) # This is when we do the hologram updating
+        timer("query", 100) # When we do the re-querying
+    }
+} elseif (~On) {
+    Ready = 0
+    if (On) {
+        if (!findCanQuery()) {
+            print("Query functions are disabled!")
+            exit()
+        }
+        
+        runOnTick(1)
+        timer("query", 1000)
+    } else {
+        runOnTick(0)
+        stoptimer("query")
+        
+        # Hide holograms
+        for (I = 0, CreatedHaloIndex - 1) {
+            holoAlpha(I, 0)
+        }
+    }
+} elseif (~ExcludeSelf | ~ExcludeEntities) {
+    findClearBlackList()
+    if (ExcludeSelf) {
+        findDisallowEntities(entity():getConstraints())
+    }
+    findDisallowEntities(ExcludeEntities)
+} elseif (On & clk("query")) {
+    findInSphere(entity():pos(), UseRange)
+    findSortByDistance(vec()) # Prevent flickering
+    
+    Found = findToArray()
+    
+    # Create some holograms
+    if (CreatedHaloIndex < 20) {
+        NeedCreate = 20 - CreatedHaloIndex - 1 # Create an initial number of holograms
+    } else {
+        NeedCreate = min(5, Found:count() - CreatedHaloIndex + 4)
+    }
+    if (NeedCreate > 0) {
+        Ready = 0
+        Self = entity()
+        for (I = 0, NeedCreate) {
+            holoCreate(CreatedHaloIndex)
+            holoParent(CreatedHaloIndex, Self) # Improves non-turbo mode
+            holoAlpha(CreatedHaloIndex, 0)
+            CreatedHaloIndex++
+        }
+        Ready = Found:count() <= CreatedHaloIndex
+    } else {
+        Ready = 1
+    }
+    
+    # If turbo mode is not on, then we reset the loop only here, which
+    # means the loop will only execute a minimum of once every 1 second
+    if (!TurboMode & RenderIndex >= CreatedHaloIndex) {
+        RenderIndex = 0
+    }
+    
+    timer("query", 1000)
+} elseif (On & tickClk()) {
+    NumFound = Found:count()
+    # Loop through the holograms that we need to update
+    # We split it over several iterations so that we don't hit the
+    # Expression 2 limit on operations
+    while (RenderIndex < CreatedHaloIndex) {
+        if (minquota() < 380) {
+            exit()
+        }
+        
+        if (RenderIndex >= NumFound) { # Unused hologram
+            holoAlpha(RenderIndex, 0)
+        } else {
+            E = Found[RenderIndex, entity]
+            HE = holoEntity(RenderIndex)
+            holoAlpha(RenderIndex, 0)
+            # Detect the model to use by looking for keywords in the name
+            # of the real prop's model filename
+            Model = E:model()
+            if (E:isPlayer()) {
+                holoModel(RenderIndex, "tetra")
+            } elseif (Model:find("dome")) {
+                holoModel(RenderIndex, "dome2")
+            } elseif (Model:find("sphere") | Model:find("round")) {
+                holoModel(RenderIndex, "icosphere3")
+            } elseif (Model:find("circle") | (Model:find("wheel") & !Model:find("base")) | Model:find("tire") | Model:find("tube") | Model:find("drum") | Model:find("cylinder")) {
+                holoModel(RenderIndex, "cylinder")
+            } else {
+                holoModel(RenderIndex, "cube")
+            }
+            Size = E:boxSize() 
+            # Calculate the position of the hologram
+            # For players, and possibly other entities, the mass center 
+            # is always 0, 0, 0, so we instead use the entity's position.
+            # The entity's position is sometimes offset a little, and so
+            # that is why we use the mass center if we can.
+            if (E:massCenter() == vec(0, 0, 0)) {
+                AdjustedPos = entity():toWorld(entity():toLocal(E:pos() + vec(0, 0, E:height() / 2)) * UsePositionScale)
+            } else {
+                AdjustedPos = entity():toWorld(entity():toLocal(E:massCenter()) * UsePositionScale)
+            }
+            holoPos(RenderIndex, AdjustedPos:setZ(AdjustedPos:z() + ShiftZ))
+            holoAng(RenderIndex, E:angles())
+            holoScale(RenderIndex, Size / 12 * UseSizeScale)
+            # Color the players a little differently
+            if (E:isPlayer()) {
+                HE:setColor(vec(255, 0, 0))
+            } else {
+                HE:setColor(E:getColor())
+            }
+            HE:setMaterial(E:getMaterial())
+            holoAlpha(RenderIndex, 255)
+        }
+        RenderIndex++
+    }
+    
+    if (TurboMode & RenderIndex >= CreatedHaloIndex) {
+        RenderIndex = 0
+    }
+}

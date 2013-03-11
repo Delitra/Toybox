@@ -1,7 +1,0 @@
-"AddonInfo"
-{
-    "name" "Tabbed Spawn Menu"
-    "version" "1.11"
-    "author_name" "sk89q"
-    "info" "Adds tabs for categories in the spawn list"
-}

@@ -1,0 +1,10 @@
+"AddonInfo"
+{
+	"name"		"VoiceRadio"
+	"version"	"1.0"
+	"up_date"	""
+	"author_name"	"BoJaN, sk89q"
+	"author_email"	""
+	"author_url"	""
+	"info"		"Radio/microphone for a RP radio station"
+}

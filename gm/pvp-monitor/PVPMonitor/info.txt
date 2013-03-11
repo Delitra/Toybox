@@ -1,0 +1,10 @@
+"AddonInfo"
+{
+	"name"		"PVP Monitor"
+	"version"	"1.0"
+	"up_date"	""
+	"author_name"	"sk89q"
+	"author_email"	""
+	"author_url"	"http://www.sk89q.com"
+	"info"		"Administrator tool"
+}

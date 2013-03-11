@@ -1,0 +1,88 @@
+@name Montezuma's Wheel Lights [sk89q]
+@inputs Active PulseRate Pattern PulsePattern Diameter ZRange BasePosition:vector
+@inputs Color1:vector Color2:vector
+@outputs Vec1:vector Active1 Clear1 FadeRate Emitters:array
+@persist StartTime LastPulseCycle
+@trigger Active
+
+if (first() | duped()) {
+    Active1 = Active
+    FadeRate = 100000
+    StartTime = curtime()
+    
+    timer("Find", 0)
+} elseif (~Active) {
+    Active1 = Active
+    if (Active) {
+        StartTime = curtime()
+        if (Emitters:count() > 0) {
+            runOnTick(1)
+        }
+    } else {
+        runOnTick(0)
+    }
+} elseif (clk("Find")) {
+    Emitters = array()
+    Constraints = entity():getConstraints()
+    
+    for (I = 1, Constraints:count()) {
+        E = Constraints[I, entity]
+        
+        if (E:type() == "gmod_wire_holoemitter") {
+            Emitters:pushEntity(E)
+        }
+    }
+    
+    if (Emitters:count() == 0) {
+        timer("Find", 1000)
+    } else {
+        if (Active) {
+            runOnTick(1)
+        }
+    }
+} elseif (tickClk()) {
+    ShouldPulse = 0
+    Cycle = floor((curtime() - StartTime) / PulseRate)
+    if (Cycle != LastPulseCycle) {
+        ShouldPulse = 1
+        LastPulseCycle = Cycle
+    }
+    
+    EffectiveDiameter = Diameter
+    
+    if (ShouldPulse) {
+        if (PulsePattern == 1) {
+            Clear1 = 0
+            Emitters[1, entity]:setColor(Cycle % 2 ? Color1 : Color2)
+        } elseif (PulsePattern == 2) {
+            Clear1 = !Clear1
+        } elseif (PulsePattern == 3) {
+            Clear1 = 0
+            Emitters[1, entity]:setColor(hsv2rgb(vec(random(0, 360), 1, 1)))
+        } else {
+            Clear1 = 0
+            Emitters[1, entity]:setColor(Color1)
+        }
+    }
+    
+    if (!Clear1) {
+        if (Pattern == 1) {
+            K = curtime() / 5 * 360
+            K2 = curtime() / 2 * 360
+
+            Vec1 = Emitters[1, entity]:toLocal(vec(cos(K) * EffectiveDiameter / 2,
+                                                   sin(K) * EffectiveDiameter / 2,
+                                                   random(0, ZRange))
+                                               + BasePosition)
+        } else {
+            K = curtime() / 5 * 360
+            K2 = curtime() / 2 * 360
+            K3 = curtime() / 8 * 360
+
+            Vec1 = Emitters[1, entity]:toLocal(vec(cos(K2) * EffectiveDiameter / 2,
+                                                       sin(K3) * EffectiveDiameter / 2,
+                                                       sin(K) * ZRange / 2 + ZRange / 2)
+                                                   + BasePosition)
+        }
+    }
+}
